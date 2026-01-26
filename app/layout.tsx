@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Sprite Sheet Creator',
-  description: 'Create pixel art sprite sheets with AI',
+  description: 'Create pixel art sprite sheets using fal.ai',
 }
 
 export default function RootLayout({

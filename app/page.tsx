@@ -797,7 +797,7 @@ export default function Home() {
           <FalLogo size={36} />
           <h1>Sprite Sheet Creator</h1>
         </div>
-        <p>Create pixel art sprite sheets with AI</p>
+        <p>Create pixel art sprite sheets using fal.ai</p>
       </header>
 
       {/* Steps indicator */}
