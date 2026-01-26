@@ -324,7 +324,7 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps 
       // Apply scale boost for attack frames - the AI renders characters smaller
       // to fit spell effects, so we compensate
       const isAttackFrame = state.isAttacking && attackImages.length > 0;
-      const scale = baseScale * (isAttackFrame ? 1.2 : 1.0);
+      const scale = baseScale * (isAttackFrame ? 1.35 : 1.0);
       
       const drawWidth = currentImg.width * scale;
       const drawHeight = currentImg.height * scale;

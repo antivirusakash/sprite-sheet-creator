@@ -785,9 +785,9 @@ export default function Home() {
     setCurrentStep(4);
   };
 
-  const proceedToAnimation = () => {
-    setCompletedSteps((prev) => new Set([...prev, 4]));
-    setCurrentStep(5);
+  const proceedToSandbox = () => {
+    setCompletedSteps((prev) => new Set([...prev, 4, 5]));
+    setCurrentStep(6);
   };
 
   return (
@@ -802,14 +802,18 @@ export default function Home() {
 
       {/* Steps indicator */}
       <div className="steps-indicator">
-        {[1, 2, 3, 4, 5, 6].map((step) => (
-          <div
-            key={step}
-            className={`step-dot ${currentStep === step ? "active" : ""} ${
-              completedSteps.has(step) ? "completed" : ""
-            }`}
-          />
-        ))}
+        {[1, 2, 3, 4, 5].map((displayStep) => {
+          // Map display step 5 to internal step 6 (sandbox)
+          const internalStep = displayStep === 5 ? 6 : displayStep;
+          return (
+            <div
+              key={displayStep}
+              className={`step-dot ${currentStep === internalStep ? "active" : ""} ${
+                completedSteps.has(internalStep) ? "completed" : ""
+              }`}
+            />
+          );
+        })}
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -1278,10 +1282,10 @@ export default function Home() {
             </button>
             <button
               className="btn btn-success"
-              onClick={proceedToAnimation}
+              onClick={proceedToSandbox}
               disabled={walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0 || attackExtractedFrames.length === 0}
             >
-              Preview Animation →
+              Try in Sandbox →
             </button>
           </div>
         </div>
@@ -1410,7 +1414,7 @@ export default function Home() {
       {currentStep === 6 && (
         <div className="step-container">
           <h2 className="step-title">
-            <span className="step-number">6</span>
+            <span className="step-number">5</span>
             Sandbox
           </h2>
 
@@ -1448,8 +1452,8 @@ export default function Home() {
           </div>
 
           <div className="button-group" style={{ marginTop: "1.5rem" }}>
-            <button className="btn btn-secondary" onClick={() => setCurrentStep(5)}>
-              ← Back to Preview & Export
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(4)}>
+              ← Back to Frame Extraction
             </button>
             <button className="btn btn-secondary" onClick={() => {
               // Reset everything
