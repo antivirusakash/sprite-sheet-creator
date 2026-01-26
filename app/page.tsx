@@ -1,0 +1,1145 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
+
+// Dynamically import PixiSandbox to avoid SSR issues
+const PixiSandbox = lazy(() => import("./components/PixiSandbox"));
+
+// Fal Logo SVG component
+const FalLogo = ({ className = "", size = 32 }: { className?: string; size?: number }) => (
+  <svg 
+    viewBox="0 0 624 624" 
+    fill="currentColor" 
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    className={className}
+  >
+    <path fillRule="evenodd" clipRule="evenodd" d="M402.365 0C413.17 0.000231771 421.824 8.79229 422.858 19.5596C432.087 115.528 508.461 191.904 604.442 201.124C615.198 202.161 624 210.821 624 221.638V402.362C624 413.179 615.198 421.839 604.442 422.876C508.461 432.096 432.087 508.472 422.858 604.44C421.824 615.208 413.17 624 402.365 624H221.635C210.83 624 202.176 615.208 201.142 604.44C191.913 508.472 115.538 432.096 19.5576 422.876C8.80183 421.839 0 413.179 0 402.362V221.638C0 210.821 8.80183 202.161 19.5576 201.124C115.538 191.904 191.913 115.528 201.142 19.5596C202.176 8.79215 210.83 0 221.635 0H402.365ZM312 124C208.17 124 124 208.17 124 312C124 415.83 208.17 500 312 500C415.83 500 500 415.83 500 312C500 208.17 415.83 124 312 124Z"/>
+  </svg>
+);
+
+// Fal Spinner component
+const FalSpinner = ({ size = 48 }: { size?: number }) => (
+  <FalLogo className="fal-spinner" size={size} />
+);
+
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
+
+interface Frame {
+  dataUrl: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export default function Home() {
+  // Step management
+  const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+
+  // Step 1: Character generation
+  const [characterPrompt, setCharacterPrompt] = useState("");
+  const [characterImageUrl, setCharacterImageUrl] = useState<string | null>(null);
+  const [isGeneratingCharacter, setIsGeneratingCharacter] = useState(false);
+
+  // Step 2: Sprite sheet generation (walk + jump)
+  const [walkSpriteSheetUrl, setWalkSpriteSheetUrl] = useState<string | null>(null);
+  const [jumpSpriteSheetUrl, setJumpSpriteSheetUrl] = useState<string | null>(null);
+  const [isGeneratingSpriteSheet, setIsGeneratingSpriteSheet] = useState(false);
+
+  // Step 3: Background removal (walk + jump)
+  const [walkBgRemovedUrl, setWalkBgRemovedUrl] = useState<string | null>(null);
+  const [jumpBgRemovedUrl, setJumpBgRemovedUrl] = useState<string | null>(null);
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
+
+  // Step 4: Frame extraction (grid-based) - walk
+  const [walkGridCols, setWalkGridCols] = useState(3);
+  const [walkGridRows, setWalkGridRows] = useState(2);
+  const [walkVerticalDividers, setWalkVerticalDividers] = useState<number[]>([]);
+  const [walkHorizontalDividers, setWalkHorizontalDividers] = useState<number[]>([]);
+  const [walkExtractedFrames, setWalkExtractedFrames] = useState<Frame[]>([]);
+  const [walkSpriteSheetDimensions, setWalkSpriteSheetDimensions] = useState({ width: 0, height: 0 });
+  const walkSpriteSheetRef = useRef<HTMLImageElement>(null);
+
+  // Step 4: Frame extraction (grid-based) - jump
+  const [jumpGridCols, setJumpGridCols] = useState(2);
+  const [jumpGridRows, setJumpGridRows] = useState(2);
+  const [jumpVerticalDividers, setJumpVerticalDividers] = useState<number[]>([]);
+  const [jumpHorizontalDividers, setJumpHorizontalDividers] = useState<number[]>([]);
+  const [jumpExtractedFrames, setJumpExtractedFrames] = useState<Frame[]>([]);
+  const [jumpSpriteSheetDimensions, setJumpSpriteSheetDimensions] = useState({ width: 0, height: 0 });
+  const jumpSpriteSheetRef = useRef<HTMLImageElement>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Which sprite sheet is being edited
+  const [activeSheet, setActiveSheet] = useState<"walk" | "jump">("walk");
+
+  // Step 5: Animation preview
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [fps, setFps] = useState(8);
+  const [direction, setDirection] = useState<"right" | "left">("right");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Step 6: Sandbox - state is now managed inside PixiSandbox component
+
+  // Error handling
+  const [error, setError] = useState<string | null>(null);
+
+  // Initialize walk divider positions when grid changes
+  useEffect(() => {
+    if (walkSpriteSheetDimensions.width > 0) {
+      const vPositions: number[] = [];
+      for (let i = 1; i < walkGridCols; i++) {
+        vPositions.push((i / walkGridCols) * 100);
+      }
+      setWalkVerticalDividers(vPositions);
+
+      const hPositions: number[] = [];
+      for (let i = 1; i < walkGridRows; i++) {
+        hPositions.push((i / walkGridRows) * 100);
+      }
+      setWalkHorizontalDividers(hPositions);
+    }
+  }, [walkGridCols, walkGridRows, walkSpriteSheetDimensions.width]);
+
+  // Initialize jump divider positions when grid changes
+  useEffect(() => {
+    if (jumpSpriteSheetDimensions.width > 0) {
+      const vPositions: number[] = [];
+      for (let i = 1; i < jumpGridCols; i++) {
+        vPositions.push((i / jumpGridCols) * 100);
+      }
+      setJumpVerticalDividers(vPositions);
+
+      const hPositions: number[] = [];
+      for (let i = 1; i < jumpGridRows; i++) {
+        hPositions.push((i / jumpGridRows) * 100);
+      }
+      setJumpHorizontalDividers(hPositions);
+    }
+  }, [jumpGridCols, jumpGridRows, jumpSpriteSheetDimensions.width]);
+
+  // Extract walk frames when divider positions change
+  useEffect(() => {
+    if (walkBgRemovedUrl && walkSpriteSheetDimensions.width > 0) {
+      extractWalkFrames();
+    }
+  }, [walkBgRemovedUrl, walkVerticalDividers, walkHorizontalDividers, walkSpriteSheetDimensions]);
+
+  // Extract jump frames when divider positions change
+  useEffect(() => {
+    if (jumpBgRemovedUrl && jumpSpriteSheetDimensions.width > 0) {
+      extractJumpFrames();
+    }
+  }, [jumpBgRemovedUrl, jumpVerticalDividers, jumpHorizontalDividers, jumpSpriteSheetDimensions]);
+
+  // Animation loop (uses walk frames for preview)
+  useEffect(() => {
+    if (!isPlaying || walkExtractedFrames.length === 0) return;
+
+    const interval = setInterval(() => {
+      setCurrentFrameIndex((prev) => (prev + 1) % walkExtractedFrames.length);
+    }, 1000 / fps);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, fps, walkExtractedFrames.length]);
+
+  // Draw current frame on canvas (uses walk frames for preview)
+  useEffect(() => {
+    if (walkExtractedFrames.length === 0 || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const frame = walkExtractedFrames[currentFrameIndex];
+    if (!frame) return;
+
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      if (direction === "left") {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, -canvas.width, 0);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, 0, 0);
+      }
+    };
+    img.src = frame.dataUrl;
+  }, [currentFrameIndex, walkExtractedFrames, direction]);
+
+  // Keyboard controls for Step 5
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (currentStep !== 5) return;
+
+      if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") {
+        setDirection("right");
+        if (!isPlaying) setIsPlaying(true);
+      } else if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft") {
+        setDirection("left");
+        if (!isPlaying) setIsPlaying(true);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setIsPlaying(false);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (currentStep !== 5) return;
+
+      if (
+        e.key === "d" ||
+        e.key === "D" ||
+        e.key === "ArrowRight" ||
+        e.key === "a" ||
+        e.key === "A" ||
+        e.key === "ArrowLeft"
+      ) {
+        setIsPlaying(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [currentStep, isPlaying]);
+
+  // Sandbox keyboard controls and game loop are now handled inside PixiSandbox component
+
+  // API calls
+  const generateCharacter = async () => {
+    if (!characterPrompt.trim()) {
+      setError("Please enter a prompt");
+      return;
+    }
+
+    setError(null);
+    setIsGeneratingCharacter(true);
+
+    try {
+      const response = await fetch("/api/generate-character", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: characterPrompt }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate character");
+      }
+
+      setCharacterImageUrl(data.imageUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate character");
+    } finally {
+      setIsGeneratingCharacter(false);
+    }
+  };
+
+  const generateSpriteSheet = async () => {
+    if (!characterImageUrl) return;
+
+    setError(null);
+    setIsGeneratingSpriteSheet(true);
+
+    try {
+      // Send parallel requests for walk and jump sprite sheets
+      const [walkResponse, jumpResponse] = await Promise.all([
+        fetch("/api/generate-sprite-sheet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterImageUrl, type: "walk" }),
+        }),
+        fetch("/api/generate-sprite-sheet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterImageUrl, type: "jump" }),
+        }),
+      ]);
+
+      const walkData = await walkResponse.json();
+      const jumpData = await jumpResponse.json();
+
+      if (!walkResponse.ok) {
+        throw new Error(walkData.error || "Failed to generate walk sprite sheet");
+      }
+      if (!jumpResponse.ok) {
+        throw new Error(jumpData.error || "Failed to generate jump sprite sheet");
+      }
+
+      setWalkSpriteSheetUrl(walkData.imageUrl);
+      setJumpSpriteSheetUrl(jumpData.imageUrl);
+      setCompletedSteps((prev) => new Set([...prev, 1]));
+      setCurrentStep(2);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate sprite sheets");
+    } finally {
+      setIsGeneratingSpriteSheet(false);
+    }
+  };
+
+  const removeBackground = async () => {
+    if (!walkSpriteSheetUrl || !jumpSpriteSheetUrl) return;
+
+    setError(null);
+    setIsRemovingBg(true);
+
+    try {
+      // Send parallel requests for both sprite sheets
+      const [walkResponse, jumpResponse] = await Promise.all([
+        fetch("/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: walkSpriteSheetUrl }),
+        }),
+        fetch("/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: jumpSpriteSheetUrl }),
+        }),
+      ]);
+
+      const walkData = await walkResponse.json();
+      const jumpData = await jumpResponse.json();
+
+      if (!walkResponse.ok) {
+        throw new Error(walkData.error || "Failed to remove walk background");
+      }
+      if (!jumpResponse.ok) {
+        throw new Error(jumpData.error || "Failed to remove jump background");
+      }
+
+      setWalkBgRemovedUrl(walkData.imageUrl);
+      setJumpBgRemovedUrl(jumpData.imageUrl);
+      setWalkSpriteSheetDimensions({ width: walkData.width, height: walkData.height });
+      setJumpSpriteSheetDimensions({ width: jumpData.width, height: jumpData.height });
+      setCompletedSteps((prev) => new Set([...prev, 2]));
+      setCurrentStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove background");
+    } finally {
+      setIsRemovingBg(false);
+    }
+  };
+
+  const extractWalkFrames = useCallback(async () => {
+    if (!walkBgRemovedUrl) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      const frames: Frame[] = [];
+      const colPositions = [0, ...walkVerticalDividers, 100];
+      const rowPositions = [0, ...walkHorizontalDividers, 100];
+
+      for (let row = 0; row < rowPositions.length - 1; row++) {
+        const startY = Math.round((rowPositions[row] / 100) * img.height);
+        const endY = Math.round((rowPositions[row + 1] / 100) * img.height);
+        const frameHeight = endY - startY;
+
+        for (let col = 0; col < colPositions.length - 1; col++) {
+          const startX = Math.round((colPositions[col] / 100) * img.width);
+          const endX = Math.round((colPositions[col + 1] / 100) * img.width);
+          const frameWidth = endX - startX;
+
+          const canvas = document.createElement("canvas");
+          canvas.width = frameWidth;
+          canvas.height = frameHeight;
+          const ctx = canvas.getContext("2d");
+
+          if (ctx) {
+            ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            frames.push({
+              dataUrl: canvas.toDataURL("image/png"),
+              x: startX,
+              y: startY,
+              width: frameWidth,
+              height: frameHeight,
+            });
+          }
+        }
+      }
+
+      setWalkExtractedFrames(frames);
+    };
+
+    img.src = walkBgRemovedUrl;
+  }, [walkBgRemovedUrl, walkVerticalDividers, walkHorizontalDividers]);
+
+  const extractJumpFrames = useCallback(async () => {
+    if (!jumpBgRemovedUrl) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      const frames: Frame[] = [];
+      const colPositions = [0, ...jumpVerticalDividers, 100];
+      const rowPositions = [0, ...jumpHorizontalDividers, 100];
+
+      for (let row = 0; row < rowPositions.length - 1; row++) {
+        const startY = Math.round((rowPositions[row] / 100) * img.height);
+        const endY = Math.round((rowPositions[row + 1] / 100) * img.height);
+        const frameHeight = endY - startY;
+
+        for (let col = 0; col < colPositions.length - 1; col++) {
+          const startX = Math.round((colPositions[col] / 100) * img.width);
+          const endX = Math.round((colPositions[col + 1] / 100) * img.width);
+          const frameWidth = endX - startX;
+
+          const canvas = document.createElement("canvas");
+          canvas.width = frameWidth;
+          canvas.height = frameHeight;
+          const ctx = canvas.getContext("2d");
+
+          if (ctx) {
+            ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            frames.push({
+              dataUrl: canvas.toDataURL("image/png"),
+              x: startX,
+              y: startY,
+              width: frameWidth,
+              height: frameHeight,
+            });
+          }
+        }
+      }
+
+      setJumpExtractedFrames(frames);
+    };
+
+    img.src = jumpBgRemovedUrl;
+  }, [jumpBgRemovedUrl, jumpVerticalDividers, jumpHorizontalDividers]);
+
+  // Walk vertical divider drag handling
+  const handleWalkVerticalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = walkSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeX = moveEvent.clientX - imgRect.left;
+      const percentage = Math.max(0, Math.min(100, (relativeX / imgRect.width) * 100));
+
+      const newPositions = [...walkVerticalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setWalkVerticalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Walk horizontal divider drag handling
+  const handleWalkHorizontalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = walkSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeY = moveEvent.clientY - imgRect.top;
+      const percentage = Math.max(0, Math.min(100, (relativeY / imgRect.height) * 100));
+
+      const newPositions = [...walkHorizontalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setWalkHorizontalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Jump vertical divider drag handling
+  const handleJumpVerticalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = jumpSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeX = moveEvent.clientX - imgRect.left;
+      const percentage = Math.max(0, Math.min(100, (relativeX / imgRect.width) * 100));
+
+      const newPositions = [...jumpVerticalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setJumpVerticalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Jump horizontal divider drag handling
+  const handleJumpHorizontalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = jumpSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeY = moveEvent.clientY - imgRect.top;
+      const percentage = Math.max(0, Math.min(100, (relativeY / imgRect.height) * 100));
+
+      const newPositions = [...jumpHorizontalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setJumpHorizontalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Export functions
+  const exportWalkSpriteSheet = () => {
+    if (!walkBgRemovedUrl) return;
+    const link = document.createElement("a");
+    link.href = walkBgRemovedUrl;
+    link.download = "walk-sprite-sheet.png";
+    link.click();
+  };
+
+  const exportJumpSpriteSheet = () => {
+    if (!jumpBgRemovedUrl) return;
+    const link = document.createElement("a");
+    link.href = jumpBgRemovedUrl;
+    link.download = "jump-sprite-sheet.png";
+    link.click();
+  };
+
+  const exportAllFrames = () => {
+    walkExtractedFrames.forEach((frame, index) => {
+      const link = document.createElement("a");
+      link.href = frame.dataUrl;
+      link.download = `walk-frame-${index + 1}.png`;
+      link.click();
+    });
+    jumpExtractedFrames.forEach((frame, index) => {
+      const link = document.createElement("a");
+      link.href = frame.dataUrl;
+      link.download = `jump-frame-${index + 1}.png`;
+      link.click();
+    });
+  };
+
+  const proceedToFrameExtraction = () => {
+    setCompletedSteps((prev) => new Set([...prev, 3]));
+    setCurrentStep(4);
+  };
+
+  const proceedToAnimation = () => {
+    setCompletedSteps((prev) => new Set([...prev, 4]));
+    setCurrentStep(5);
+  };
+
+  return (
+    <main className="container">
+      <header className="header">
+        <div className="header-logo">
+          <FalLogo size={36} />
+          <h1>Sprite Sheet Creator</h1>
+        </div>
+        <p>Create pixel art sprite sheets with AI</p>
+      </header>
+
+      {/* Steps indicator */}
+      <div className="steps-indicator">
+        {[1, 2, 3, 4, 5, 6].map((step) => (
+          <div
+            key={step}
+            className={`step-dot ${currentStep === step ? "active" : ""} ${
+              completedSteps.has(step) ? "completed" : ""
+            }`}
+          />
+        ))}
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      {/* Step 1: Generate Character */}
+      {currentStep === 1 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">1</span>
+            Generate Character
+          </h2>
+
+          <div className="input-group">
+            <label htmlFor="prompt">Character Prompt</label>
+            <textarea
+              id="prompt"
+              className="text-input"
+              rows={3}
+              placeholder="Describe your pixel art character (e.g., 'pixel art knight with sword and shield, medieval armor, 32-bit style')"
+              value={characterPrompt}
+              onChange={(e) => setCharacterPrompt(e.target.value)}
+            />
+          </div>
+
+          <div className="button-group">
+            <button
+              className="btn btn-primary"
+              onClick={generateCharacter}
+              disabled={isGeneratingCharacter || !characterPrompt.trim()}
+            >
+              {isGeneratingCharacter ? "Generating..." : "Generate Character"}
+            </button>
+          </div>
+
+          {isGeneratingCharacter && (
+            <div className="loading">
+              <FalSpinner />
+              <span className="loading-text">Generating your character...</span>
+            </div>
+          )}
+
+          {characterImageUrl && (
+            <>
+              <div className="image-preview">
+                <img src={characterImageUrl} alt="Generated character" />
+              </div>
+
+              <div className="button-group">
+                <button
+                  className="btn btn-secondary"
+                  onClick={generateCharacter}
+                  disabled={isGeneratingCharacter}
+                >
+                  Regenerate
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={generateSpriteSheet}
+                  disabled={isGeneratingSpriteSheet}
+                >
+                  {isGeneratingSpriteSheet ? "Creating Sprite Sheet..." : "Use for Sprite Sheet →"}
+                </button>
+              </div>
+
+              {isGeneratingSpriteSheet && (
+                <div className="loading">
+                  <FalSpinner />
+                  <span className="loading-text">Creating walk cycle sprite sheet...</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Step 2: Sprite Sheets Generated */}
+      {currentStep === 2 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">2</span>
+            Sprite Sheets Generated
+          </h2>
+
+          <p className="description-text">
+            Walk and jump sprite sheets have been generated. If poses don&apos;t look right, try regenerating.
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1rem" }}>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>Walk Cycle (6 frames)</h4>
+              {walkSpriteSheetUrl && (
+                <div className="image-preview" style={{ margin: 0 }}>
+                  <img src={walkSpriteSheetUrl} alt="Walk sprite sheet" />
+                </div>
+              )}
+            </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>Jump (4 frames)</h4>
+              {jumpSpriteSheetUrl && (
+                <div className="image-preview" style={{ margin: 0 }}>
+                  <img src={jumpSpriteSheetUrl} alt="Jump sprite sheet" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {isGeneratingSpriteSheet && (
+            <div className="loading">
+              <FalSpinner />
+              <span className="loading-text">Regenerating sprite sheets...</span>
+            </div>
+          )}
+
+          <div className="button-group">
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
+              ← Back to Character
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={generateSpriteSheet}
+              disabled={isGeneratingSpriteSheet || isRemovingBg}
+            >
+              Regenerate Both
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={removeBackground}
+              disabled={isRemovingBg || isGeneratingSpriteSheet || !walkSpriteSheetUrl || !jumpSpriteSheetUrl}
+            >
+              {isRemovingBg ? "Removing Backgrounds..." : "Remove Backgrounds →"}
+            </button>
+          </div>
+
+          {isRemovingBg && (
+            <div className="loading">
+              <FalSpinner />
+              <span className="loading-text">Removing backgrounds from both sheets...</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Background Removed */}
+      {currentStep === 3 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">3</span>
+            Backgrounds Removed
+          </h2>
+
+          <p className="description-text">
+            Backgrounds have been removed. Now let&apos;s extract the individual frames.
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1rem" }}>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>Walk Cycle</h4>
+              {walkBgRemovedUrl && (
+                <div className="image-preview" style={{ margin: 0 }}>
+                  <img src={walkBgRemovedUrl} alt="Walk sprite sheet with background removed" />
+                </div>
+              )}
+            </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.9rem" }}>Jump</h4>
+              {jumpBgRemovedUrl && (
+                <div className="image-preview" style={{ margin: 0 }}>
+                  <img src={jumpBgRemovedUrl} alt="Jump sprite sheet with background removed" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="button-group">
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(2)}>
+              ← Back
+            </button>
+            <button className="btn btn-success" onClick={proceedToFrameExtraction}>
+              Extract Frames →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Frame Extraction */}
+      {currentStep === 4 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">4</span>
+            Extract Frames
+          </h2>
+
+          <p className="description-text">
+            Drag the dividers to adjust frame boundaries. Purple = columns, pink = rows.
+          </p>
+
+          {/* Tab buttons */}
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+            <button
+              className={`btn ${activeSheet === "walk" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setActiveSheet("walk")}
+            >
+              Walk Cycle
+            </button>
+            <button
+              className={`btn ${activeSheet === "jump" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setActiveSheet("jump")}
+            >
+              Jump
+            </button>
+          </div>
+
+          {/* Walk frame extraction */}
+          {activeSheet === "walk" && (
+            <>
+              <div className="frame-controls">
+                <label htmlFor="walkGridCols">Columns:</label>
+                <input
+                  id="walkGridCols"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={walkGridCols}
+                  onChange={(e) => setWalkGridCols(Math.max(1, Math.min(8, parseInt(e.target.value) || 3)))}
+                />
+                <label htmlFor="walkGridRows" style={{ marginLeft: "1rem" }}>Rows:</label>
+                <input
+                  id="walkGridRows"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={walkGridRows}
+                  onChange={(e) => setWalkGridRows(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
+                />
+                <span style={{ marginLeft: "1rem", color: "var(--text-tertiary)", fontSize: "0.875rem" }}>
+                  ({walkGridCols * walkGridRows} frames)
+                </span>
+              </div>
+
+              {walkBgRemovedUrl && (
+                <div className="frame-extractor" ref={containerRef}>
+                  <div className="sprite-sheet-container">
+                    <img
+                      ref={walkSpriteSheetRef}
+                      src={walkBgRemovedUrl}
+                      alt="Walk sprite sheet"
+                      onLoad={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        setWalkSpriteSheetDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                      }}
+                    />
+                    <div className="divider-overlay">
+                      {walkVerticalDividers.map((pos, index) => (
+                        <div
+                          key={`wv-${index}`}
+                          className="divider-line divider-vertical"
+                          style={{ left: `${pos}%` }}
+                          onMouseDown={(e) => handleWalkVerticalDividerDrag(index, e)}
+                        />
+                      ))}
+                      {walkHorizontalDividers.map((pos, index) => (
+                        <div
+                          key={`wh-${index}`}
+                          className="divider-line divider-horizontal"
+                          style={{ top: `${pos}%` }}
+                          onMouseDown={(e) => handleWalkHorizontalDividerDrag(index, e)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {walkExtractedFrames.length > 0 && (
+                <div className="frames-preview">
+                  {walkExtractedFrames.map((frame, index) => (
+                    <div key={index} className="frame-thumb">
+                      <img src={frame.dataUrl} alt={`Walk frame ${index + 1}`} />
+                      <div className="frame-label">Walk {index + 1}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Jump frame extraction */}
+          {activeSheet === "jump" && (
+            <>
+              <div className="frame-controls">
+                <label htmlFor="jumpGridCols">Columns:</label>
+                <input
+                  id="jumpGridCols"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={jumpGridCols}
+                  onChange={(e) => setJumpGridCols(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
+                />
+                <label htmlFor="jumpGridRows" style={{ marginLeft: "1rem" }}>Rows:</label>
+                <input
+                  id="jumpGridRows"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={jumpGridRows}
+                  onChange={(e) => setJumpGridRows(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
+                />
+                <span style={{ marginLeft: "1rem", color: "var(--text-tertiary)", fontSize: "0.875rem" }}>
+                  ({jumpGridCols * jumpGridRows} frames)
+                </span>
+              </div>
+
+              {jumpBgRemovedUrl && (
+                <div className="frame-extractor">
+                  <div className="sprite-sheet-container">
+                    <img
+                      ref={jumpSpriteSheetRef}
+                      src={jumpBgRemovedUrl}
+                      alt="Jump sprite sheet"
+                      onLoad={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        setJumpSpriteSheetDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                      }}
+                    />
+                    <div className="divider-overlay">
+                      {jumpVerticalDividers.map((pos, index) => (
+                        <div
+                          key={`jv-${index}`}
+                          className="divider-line divider-vertical"
+                          style={{ left: `${pos}%` }}
+                          onMouseDown={(e) => handleJumpVerticalDividerDrag(index, e)}
+                        />
+                      ))}
+                      {jumpHorizontalDividers.map((pos, index) => (
+                        <div
+                          key={`jh-${index}`}
+                          className="divider-line divider-horizontal"
+                          style={{ top: `${pos}%` }}
+                          onMouseDown={(e) => handleJumpHorizontalDividerDrag(index, e)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {jumpExtractedFrames.length > 0 && (
+                <div className="frames-preview">
+                  {jumpExtractedFrames.map((frame, index) => (
+                    <div key={index} className="frame-thumb">
+                      <img src={frame.dataUrl} alt={`Jump frame ${index + 1}`} />
+                      <div className="frame-label">Jump {index + 1}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="button-group">
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(3)}>
+              ← Back
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={proceedToAnimation}
+              disabled={walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0}
+            >
+              Preview Animation →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Animation Preview & Export */}
+      {currentStep === 5 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">5</span>
+            Preview & Export
+          </h2>
+
+          <p className="description-text">Walk animation preview. Test both walk and jump in the sandbox!</p>
+
+          <div className="animation-preview">
+            <div className="animation-canvas-container">
+              <canvas ref={canvasRef} className="animation-canvas" />
+              <div className="direction-indicator">
+                {direction === "right" ? "→ Walking Right" : "← Walking Left"}
+              </div>
+            </div>
+
+            <div className="keyboard-hint">
+              Hold <kbd>D</kbd> or <kbd>→</kbd> to walk right | Hold <kbd>A</kbd> or <kbd>←</kbd> to walk left | <kbd>Space</kbd> to stop
+            </div>
+
+            <div className="animation-controls">
+              <button
+                className={`btn ${isPlaying ? "btn-secondary" : "btn-primary"}`}
+                onClick={() => setIsPlaying(!isPlaying)}
+              >
+                {isPlaying ? "Stop" : "Play"}
+              </button>
+
+              <div className="fps-control">
+                <label>FPS: {fps}</label>
+                <input
+                  type="range"
+                  className="fps-slider"
+                  min={1}
+                  max={24}
+                  value={fps}
+                  onChange={(e) => setFps(parseInt(e.target.value))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", margin: "1rem 0" }}>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk Frames</h4>
+              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                {walkExtractedFrames.map((frame, index) => (
+                  <div
+                    key={index}
+                    className={`frame-thumb ${currentFrameIndex === index ? "active" : ""}`}
+                    onClick={() => setCurrentFrameIndex(index)}
+                  >
+                    <img src={frame.dataUrl} alt={`Walk ${index + 1}`} />
+                    <div className="frame-label">{index + 1}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump Frames</h4>
+              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                {jumpExtractedFrames.map((frame, index) => (
+                  <div key={index} className="frame-thumb">
+                    <img src={frame.dataUrl} alt={`Jump ${index + 1}`} />
+                    <div className="frame-label">{index + 1}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="export-section">
+            <h3 style={{ marginBottom: "0.75rem" }}>Export</h3>
+            <div className="export-options">
+              <button className="btn btn-primary" onClick={exportWalkSpriteSheet}>
+                Walk Sheet
+              </button>
+              <button className="btn btn-primary" onClick={exportJumpSpriteSheet}>
+                Jump Sheet
+              </button>
+              <button className="btn btn-secondary" onClick={exportAllFrames}>
+                All Frames
+              </button>
+            </div>
+          </div>
+
+          <div className="button-group" style={{ marginTop: "1.5rem" }}>
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(4)}>
+              ← Back to Frame Extraction
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={() => {
+                setCompletedSteps((prev) => new Set([...prev, 5]));
+                setCurrentStep(6);
+              }}
+            >
+              Try in Sandbox →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 6: Sandbox */}
+      {currentStep === 6 && (
+        <div className="step-container">
+          <h2 className="step-title">
+            <span className="step-number">6</span>
+            Sandbox
+          </h2>
+
+          <p className="description-text">
+            Walk and jump your character around! Use the keyboard to control movement.
+          </p>
+
+          <div className="sandbox-container">
+            <Suspense fallback={
+              <div className="loading">
+                <FalSpinner />
+                <span className="loading-text">Loading sandbox...</span>
+              </div>
+            }>
+              <PixiSandbox walkFrames={walkExtractedFrames} jumpFrames={jumpExtractedFrames} fps={fps} />
+            </Suspense>
+          </div>
+
+          <div className="keyboard-hint" style={{ marginTop: "1rem" }}>
+            <kbd>A</kbd>/<kbd>←</kbd> walk left | <kbd>D</kbd>/<kbd>→</kbd> walk right | <kbd>W</kbd>/<kbd>↑</kbd> jump
+          </div>
+
+          <div className="animation-controls" style={{ marginTop: "1rem" }}>
+            <div className="fps-control">
+              <label>Animation Speed (FPS): {fps}</label>
+              <input
+                type="range"
+                className="fps-slider"
+                min={4}
+                max={16}
+                value={fps}
+                onChange={(e) => setFps(parseInt(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div className="button-group" style={{ marginTop: "1.5rem" }}>
+            <button className="btn btn-secondary" onClick={() => setCurrentStep(5)}>
+              ← Back to Preview & Export
+            </button>
+            <button className="btn btn-secondary" onClick={() => {
+              // Reset everything
+              setCurrentStep(1);
+              setCompletedSteps(new Set());
+              setCharacterImageUrl(null);
+              setWalkSpriteSheetUrl(null);
+              setJumpSpriteSheetUrl(null);
+              setWalkBgRemovedUrl(null);
+              setJumpBgRemovedUrl(null);
+              setWalkExtractedFrames([]);
+              setJumpExtractedFrames([]);
+              setCharacterPrompt("");
+            }}>
+              Start New Sprite
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
