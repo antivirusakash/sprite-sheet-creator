@@ -2,6 +2,18 @@
 
 AI-powered sprite sheet generator for 2D pixel art characters. Built with [fal.ai](https://fal.ai) and Next.js.
 
+## Demo
+
+### Generated Sprite Sheets
+
+| Walk Cycle | Jump Animation | Attack Animation |
+|:----------:|:--------------:|:----------------:|
+| ![Walk Sprite Sheet](./assets/walk-sprite-sheet.png) | ![Jump Sprite Sheet](./assets/jump-sprite-sheet.png) | ![Attack Sprite Sheet](./assets/attack-sprite-sheet.png) |
+
+### Sandbox Preview
+
+![Sandbox Preview](./assets/sandbox-preview.png)
+
 ## Features
 
 - **Character Generation** - Generate pixel art characters from text prompts using nano-banana-pro
