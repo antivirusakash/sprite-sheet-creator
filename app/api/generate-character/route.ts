@@ -12,6 +12,11 @@ Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #
 The character should have well-defined features and expressive details.
 Show in a front-facing or 3/4 view pose, standing idle, suitable for sprite sheet animation.`;
 
+const ASSET_STYLE_PROMPT = `Generate a single game asset only (not a character), centered in the frame on a transparent background.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
+The asset should be clear, simple, and readable at small sizes.`;
+
 const IMAGE_TO_PIXEL_PROMPT = `Transform this character into 2D flat style for the Happy Periods app.
 IMPORTANT: Must be a FULL BODY shot showing the entire character from head to feet.
 Keep the character centered in the frame on a transparent background.
@@ -20,15 +25,21 @@ Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #
 Show in a front-facing or 3/4 view pose, standing idle, suitable for sprite sheet animation.
 Maintain the character's key features, colors, and identity while converting to this style.`;
 
+const IMAGE_TO_ASSET_PROMPT = `Transform this game asset into 2D flat style for the Happy Periods app.
+Keep the asset centered in the frame on a transparent background.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
+Maintain the asset's key features, colors, and identity while converting to this style.`;
+
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, imageUrl } = await request.json();
+    const { prompt, imageUrl, mode = "character" } = await request.json();
 
     // Image-to-image mode: convert uploaded image to pixel art
     if (imageUrl) {
-      const fullPrompt = prompt
-        ? `${prompt}. ${IMAGE_TO_PIXEL_PROMPT}`
-        : IMAGE_TO_PIXEL_PROMPT;
+      const basePrompt =
+        mode === "asset" ? IMAGE_TO_ASSET_PROMPT : IMAGE_TO_PIXEL_PROMPT;
+      const fullPrompt = prompt ? `${prompt}. ${basePrompt}` : basePrompt;
 
       const result = await fal.subscribe("fal-ai/nano-banana-pro/edit", {
         input: {
@@ -67,7 +78,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fullPrompt = `${prompt}. ${CHARACTER_STYLE_PROMPT}`;
+    const stylePrompt =
+      mode === "asset" ? ASSET_STYLE_PROMPT : CHARACTER_STYLE_PROMPT;
+    const fullPrompt = `${prompt}. ${stylePrompt}`;
 
     const result = await fal.subscribe("fal-ai/nano-banana-pro", {
       input: {

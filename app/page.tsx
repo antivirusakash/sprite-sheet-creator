@@ -78,10 +78,35 @@ function getContentBounds(ctx: CanvasRenderingContext2D, width: number, height: 
   };
 }
 
+const ASSET_SPRITE_PROMPT = `Create a 4-frame sprite sheet of this game asset.
+Arrange the 4 frames in a 2x2 grid on transparent background.
+Each frame should show a subtle variation or animation of the same asset (e.g., gentle sway, blink, bob, or small state changes).
+Keep the asset centered in each frame with padding and maintain consistent proportions.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.`;
+
+type AssetVariantType =
+  | "automatic"
+  | "distinct"
+  | "subtle-animation"
+  | "size-variations"
+  | "damage-variations"
+  | "color-swaps"
+  | "shape-variants"
+  | "manual";
+
 export default function Home() {
   // Step management
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [generationMode, setGenerationMode] = useState<"character" | "asset">("character");
+  const [assetVariantType, setAssetVariantType] = useState<AssetVariantType>("automatic");
+  const [assetVariantInputs, setAssetVariantInputs] = useState<string[]>([
+    "",
+    "",
+    "",
+    "",
+  ]);
 
   // Step 1: Character generation
   const [characterInputMode, setCharacterInputMode] = useState<"text" | "image">("text");
@@ -163,6 +188,36 @@ export default function Home() {
 
   // Error handling
   const [error, setError] = useState<string | null>(null);
+
+  const resetFlowState = useCallback(() => {
+    setCurrentStep(1);
+    setCompletedSteps(new Set());
+    setCharacterImageUrl(null);
+    setWalkSpriteSheetUrl(null);
+    setJumpSpriteSheetUrl(null);
+    setAttackSpriteSheetUrl(null);
+    setIdleSpriteSheetUrl(null);
+    setWalkBgRemovedUrl(null);
+    setJumpBgRemovedUrl(null);
+    setAttackBgRemovedUrl(null);
+    setIdleBgRemovedUrl(null);
+    setWalkExtractedFrames([]);
+    setJumpExtractedFrames([]);
+    setAttackExtractedFrames([]);
+    setIdleExtractedFrames([]);
+    setCharacterPrompt("");
+    setInputImageUrl("");
+    setCharacterInputMode("text");
+    setBackgroundMode("default");
+    setCustomBackgroundLayers({ layer1Url: null, layer2Url: null, layer3Url: null });
+    setAssetVariantType("automatic");
+    setAssetVariantInputs(["", "", "", ""]);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    resetFlowState();
+  }, [generationMode, resetFlowState]);
 
   // Initialize walk divider positions when grid changes
   useEffect(() => {
@@ -360,9 +415,11 @@ export default function Home() {
 
     try {
       const batchId = new Date().toISOString().replace(/[:.]/g, "-");
+      const outputSubdir =
+        generationMode === "asset" ? "game-assets/assets" : "characters";
       const requestBody = characterInputMode === "image"
-        ? { imageUrl: inputImageUrl, prompt: characterPrompt || undefined }
-        : { prompt: characterPrompt };
+        ? { imageUrl: inputImageUrl, prompt: characterPrompt || undefined, mode: generationMode }
+        : { prompt: characterPrompt, mode: generationMode };
 
       const response = await fetch("/api/generate-character", {
         method: "POST",
@@ -377,7 +434,8 @@ export default function Home() {
       }
 
       setCharacterImageUrl(data.imageUrl);
-      await saveImageToOutput(data.imageUrl, `character-${batchId}.png`, "characters");
+      const baseName = generationMode === "asset" ? "asset" : "character";
+      await saveImageToOutput(data.imageUrl, `${baseName}-${batchId}.png`, outputSubdir);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate character");
     } finally {
@@ -393,6 +451,63 @@ export default function Home() {
 
     try {
       const batchId = new Date().toISOString().replace(/[:.]/g, "-");
+      if (generationMode === "asset") {
+        const manualLines = assetVariantInputs
+          .map((value, index) => value.trim() ? `Frame ${index + 1}: ${value.trim()}` : null)
+          .filter(Boolean)
+          .join("\n");
+        const variantInstructions: Record<AssetVariantType, string> = {
+          automatic:
+            "Let the model decide 4 coherent variants of the same asset.",
+          distinct:
+            "Create 4 distinct but stylistically consistent variants of the same asset. Each frame should be clearly different.",
+          "subtle-animation":
+            "Create a subtle animation across the 4 frames (gentle sway, bob, blink, or small state changes).",
+          "size-variations":
+            "Create 4 size variations (small, medium, large, extra large) while keeping proportions consistent.",
+          "damage-variations":
+            "Create 4 damage/age states (pristine, lightly worn, damaged, heavily damaged).",
+          "color-swaps":
+            "Create 4 color variations using ONLY the provided palette. Keep shape and details identical.",
+          "shape-variants":
+            "Create 4 shape variants (rounded, squared, stacked, segmented) while keeping the same style and silhouette.",
+          manual:
+            manualLines
+              ? `Follow these per-frame instructions:\n${manualLines}`
+              : "Follow the per-frame instructions provided by the user.",
+        };
+        const variantNote = variantInstructions[assetVariantType];
+        const assetPrompt = `${ASSET_SPRITE_PROMPT}\n\nVariant style: ${variantNote}`;
+        const response = await fetch("/api/generate-sprite-sheet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            characterImageUrl,
+            type: "walk",
+            customPrompt: assetPrompt,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to generate asset sprite sheet");
+        }
+
+        setWalkSpriteSheetUrl(data.imageUrl);
+        setJumpSpriteSheetUrl(null);
+        setAttackSpriteSheetUrl(null);
+        setIdleSpriteSheetUrl(null);
+        await saveImageToOutput(
+          data.imageUrl,
+          `asset-${batchId}.png`,
+          "game-assets/sprite-sheets/raw"
+        );
+        setCompletedSteps((prev) => new Set([...prev, 1]));
+        setCurrentStep(2);
+        return;
+      }
+
       // Send parallel requests for walk, jump, attack, and idle sprite sheets
       const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/generate-sprite-sheet", {
@@ -458,6 +573,7 @@ export default function Home() {
 
   const regenerateSpriteSheet = async (type: "walk" | "jump" | "attack" | "idle") => {
     if (!characterImageUrl) return;
+    if (generationMode === "asset" && type !== "walk") return;
 
     setError(null);
     setRegeneratingSpriteSheet(type);
@@ -467,7 +583,11 @@ export default function Home() {
       const response = await fetch("/api/generate-sprite-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterImageUrl, type }),
+        body: JSON.stringify({
+          characterImageUrl,
+          type,
+          customPrompt: generationMode === "asset" ? ASSET_SPRITE_PROMPT : undefined,
+        }),
       });
 
       const data = await response.json();
@@ -485,7 +605,10 @@ export default function Home() {
       } else if (type === "idle") {
         setIdleSpriteSheetUrl(data.imageUrl);
       }
-      await saveImageToOutput(data.imageUrl, `${type}-${batchId}.png`, "sprite-sheets/raw");
+      const outputSubdir =
+        generationMode === "asset" ? "game-assets/sprite-sheets/raw" : "sprite-sheets/raw";
+      const outputName = generationMode === "asset" ? `asset-${batchId}.png` : `${type}-${batchId}.png`;
+      await saveImageToOutput(data.imageUrl, outputName, outputSubdir);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to regenerate ${type} sprite sheet`);
     } finally {
@@ -494,13 +617,45 @@ export default function Home() {
   };
 
   const removeBackground = async () => {
-    if (!walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl || !idleSpriteSheetUrl) return;
+    if (generationMode === "asset") {
+      if (!walkSpriteSheetUrl) return;
+    } else if (!walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl || !idleSpriteSheetUrl) {
+      return;
+    }
 
     setError(null);
     setIsRemovingBg(true);
 
     try {
       const batchId = new Date().toISOString().replace(/[:.]/g, "-");
+      if (generationMode === "asset") {
+        const response = await fetch("/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: walkSpriteSheetUrl }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to remove asset background");
+        }
+
+        setWalkBgRemovedUrl(data.imageUrl);
+        setJumpBgRemovedUrl(null);
+        setAttackBgRemovedUrl(null);
+        setIdleBgRemovedUrl(null);
+        await saveImageToOutput(
+          data.imageUrl,
+          `asset-${batchId}.png`,
+          "game-assets/sprite-sheets/transparent"
+        );
+        setWalkSpriteSheetDimensions({ width: data.width, height: data.height });
+        setCompletedSteps((prev) => new Set([...prev, 2]));
+        setCurrentStep(3);
+        return;
+      }
+
       // Send parallel requests for all sprite sheets
       const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/remove-background", {
@@ -1068,10 +1223,13 @@ export default function Home() {
 
   const exportWalkSpriteSheet = async () => {
     if (!walkBgRemovedUrl) return;
-    await saveImageToOutput(walkBgRemovedUrl, "walk-sprite-sheet.png");
+    const filename = generationMode === "asset" ? "asset-sprite-sheet.png" : "walk-sprite-sheet.png";
+    const subdir =
+      generationMode === "asset" ? "game-assets/sprite-sheets/transparent" : undefined;
+    await saveImageToOutput(walkBgRemovedUrl, filename, subdir);
     const link = document.createElement("a");
     link.href = walkBgRemovedUrl;
-    link.download = "walk-sprite-sheet.png";
+    link.download = filename;
     link.click();
   };
 
@@ -1104,6 +1262,19 @@ export default function Home() {
 
   const exportAllFrames = async () => {
     const savePromises: Array<Promise<string | null>> = [];
+    if (generationMode === "asset") {
+      walkExtractedFrames.forEach((frame, index) => {
+        savePromises.push(
+          saveImageToOutput(frame.dataUrl, `asset-frame-${index + 1}.png`, "game-assets/frames")
+        );
+        const link = document.createElement("a");
+        link.href = frame.dataUrl;
+        link.download = `asset-frame-${index + 1}.png`;
+        link.click();
+      });
+      await Promise.all(savePromises);
+      return;
+    }
     walkExtractedFrames.forEach((frame, index) => {
       savePromises.push(saveImageToOutput(frame.dataUrl, `walk-frame-${index + 1}.png`));
       const link = document.createElement("a");
@@ -1142,7 +1313,7 @@ export default function Home() {
 
   const proceedToSandbox = () => {
     setCompletedSteps((prev) => new Set([...prev, 4, 5]));
-    setCurrentStep(6);
+    setCurrentStep(generationMode === "asset" ? 5 : 6);
   };
 
   return (
@@ -1158,8 +1329,9 @@ export default function Home() {
       {/* Steps indicator */}
       <div className="steps-indicator">
         {[1, 2, 3, 4, 5].map((displayStep) => {
-          // Map display step 5 to internal step 6 (sandbox)
-          const internalStep = displayStep === 5 ? 6 : displayStep;
+          // Map display step 5 to internal step 6 (sandbox) for character mode
+          const internalStep =
+            displayStep === 5 ? (generationMode === "asset" ? 5 : 6) : displayStep;
           return (
             <div
               key={displayStep}
@@ -1173,13 +1345,67 @@ export default function Home() {
 
       {error && <div className="error-message">{error}</div>}
 
-      {/* Step 1: Generate Character */}
+      {/* Step 1: Generate Character / Game Assets */}
       {currentStep === 1 && (
         <div className="step-container">
           <h2 className="step-title">
             <span className="step-number">1</span>
-            Generate Character
+            {generationMode === "asset" ? "Generate Game Assets" : "Generate Character"}
           </h2>
+
+          <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="generationMode"
+                checked={generationMode === "character"}
+                onChange={() => setGenerationMode("character")}
+              />
+              Character
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="generationMode"
+                checked={generationMode === "asset"}
+                onChange={() => setGenerationMode("asset")}
+              />
+              Game Assets
+            </label>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1rem" }}>
+            <div
+              style={{
+                border: generationMode === "character" ? "2px solid var(--accent-color)" : "2px solid var(--border-color)",
+                borderRadius: "8px",
+                padding: "0.75rem",
+                background: "var(--bg-secondary)",
+                cursor: "pointer",
+              }}
+              onClick={() => setGenerationMode("character")}
+            >
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>Generate Character</h3>
+              <p style={{ margin: "0.5rem 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                Create a single character for sprite sheets and animations.
+              </p>
+            </div>
+            <div
+              style={{
+                border: generationMode === "asset" ? "2px solid var(--accent-color)" : "2px solid var(--border-color)",
+                borderRadius: "8px",
+                padding: "0.75rem",
+                background: "var(--bg-secondary)",
+                cursor: "pointer",
+              }}
+              onClick={() => setGenerationMode("asset")}
+            >
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>Generate Game Assets</h3>
+              <p style={{ margin: "0.5rem 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                Walls, buttons, pillars, cars, plants, homes, clouds, fishes, foods, and more.
+              </p>
+            </div>
+          </div>
 
           {/* Input mode tabs */}
           <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -1199,12 +1425,18 @@ export default function Home() {
 
           {characterInputMode === "text" ? (
             <div className="input-group">
-              <label htmlFor="prompt">Character Prompt</label>
+              <label htmlFor="prompt">
+                {generationMode === "asset" ? "Game Asset Prompt" : "Character Prompt"}
+              </label>
               <textarea
                 id="prompt"
                 className="text-input"
                 rows={3}
-                placeholder="Describe your pixel art character (e.g., 'pixel art knight with sword and shield, medieval armor, 32-bit style')"
+                placeholder={
+                  generationMode === "asset"
+                    ? "Describe your game asset (e.g., 'flat pink brick wall, rounded edges, 2D')"
+                    : "Describe your pixel art character (e.g., 'pixel art knight with sword and shield, medieval armor, 32-bit style')"
+                }
                 value={characterPrompt}
                 onChange={(e) => setCharacterPrompt(e.target.value)}
               />
@@ -1323,7 +1555,11 @@ export default function Home() {
                   id="promptOptional"
                   className="text-input"
                   rows={2}
-                  placeholder="Any additional instructions for the pixel art conversion..."
+                  placeholder={
+                    generationMode === "asset"
+                      ? "Any additional instructions for the asset conversion..."
+                      : "Any additional instructions for the pixel art conversion..."
+                  }
                   value={characterPrompt}
                   onChange={(e) => setCharacterPrompt(e.target.value)}
                 />
@@ -1344,7 +1580,11 @@ export default function Home() {
               {isGeneratingCharacter
                 ? "Generating..."
                 : characterInputMode === "image"
-                ? "Convert to Pixel Art"
+                ? generationMode === "asset"
+                  ? "Convert to Game Asset"
+                  : "Convert to Pixel Art"
+                : generationMode === "asset"
+                ? "Generate Game Asset"
                 : "Generate Character"}
             </button>
           </div>
@@ -1354,7 +1594,11 @@ export default function Home() {
               <FalSpinner />
               <span className="loading-text">
                 {characterInputMode === "image"
-                  ? "Converting to pixel art..."
+                  ? generationMode === "asset"
+                    ? "Converting to game asset..."
+                    : "Converting to pixel art..."
+                  : generationMode === "asset"
+                  ? "Generating your game asset..."
                   : "Generating your character..."}
               </span>
             </div>
@@ -1363,8 +1607,110 @@ export default function Home() {
           {characterImageUrl && (
             <>
               <div className="image-preview">
-                <img src={characterImageUrl} alt="Generated character" />
+                <img
+                  src={characterImageUrl}
+                  alt={generationMode === "asset" ? "Generated game asset" : "Generated character"}
+                />
               </div>
+
+              {generationMode === "asset" && (
+                <div className="input-group" style={{ marginTop: "1rem" }}>
+                  <label>Asset Sheet Variant Type</label>
+                  <div style={{ display: "grid", gap: "0.5rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "automatic"}
+                        onChange={() => setAssetVariantType("automatic")}
+                      />
+                      Automatic
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "distinct"}
+                        onChange={() => setAssetVariantType("distinct")}
+                      />
+                      4 distinct variants
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "subtle-animation"}
+                        onChange={() => setAssetVariantType("subtle-animation")}
+                      />
+                      Subtle animation
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "size-variations"}
+                        onChange={() => setAssetVariantType("size-variations")}
+                      />
+                      Size variations
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "damage-variations"}
+                        onChange={() => setAssetVariantType("damage-variations")}
+                      />
+                      Damage/age variations
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "color-swaps"}
+                        onChange={() => setAssetVariantType("color-swaps")}
+                      />
+                      Color swaps (palette-only)
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "shape-variants"}
+                        onChange={() => setAssetVariantType("shape-variants")}
+                      />
+                      Shape variants (rounded/squared/stacked)
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name="assetVariantType"
+                        checked={assetVariantType === "manual"}
+                        onChange={() => setAssetVariantType("manual")}
+                      />
+                      Manual per-cell input
+                    </label>
+                  </div>
+
+                  {assetVariantType === "manual" && (
+                    <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.75rem" }}>
+                      {assetVariantInputs.map((value, index) => (
+                        <input
+                          key={`asset-variant-${index}`}
+                          type="text"
+                          className="text-input"
+                          placeholder={`Frame ${index + 1} instructions`}
+                          value={value}
+                          onChange={(e) => {
+                            const next = [...assetVariantInputs];
+                            next[index] = e.target.value;
+                            setAssetVariantInputs(next);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="button-group">
                 <button
@@ -1379,7 +1725,11 @@ export default function Home() {
                   onClick={generateSpriteSheet}
                   disabled={isGeneratingSpriteSheet}
                 >
-                  {isGeneratingSpriteSheet ? "Creating Sprite Sheet..." : "Use for Sprite Sheet →"}
+                  {isGeneratingSpriteSheet
+                    ? "Creating Sprite Sheet..."
+                    : generationMode === "asset"
+                    ? "Use for Asset Sheet →"
+                    : "Use for Sprite Sheet →"}
                 </button>
               </div>
 
@@ -1399,19 +1749,23 @@ export default function Home() {
         <div className="step-container">
           <h2 className="step-title">
             <span className="step-number">2</span>
-            Sprite Sheets Generated
+            {generationMode === "asset" ? "Asset Sheet Generated" : "Sprite Sheets Generated"}
           </h2>
 
           <p className="description-text">
-            Walk, jump, and attack sprite sheets have been generated. If poses don&apos;t look right, try regenerating.
+            {generationMode === "asset"
+              ? "Your asset sheet has been generated. If it doesn&apos;t look right, try regenerating."
+              : "Walk, jump, and attack sprite sheets have been generated. If poses don&apos;t look right, try regenerating."}
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk (4 frames)</h4>
+          {generationMode === "asset" ? (
+            <div style={{ marginBottom: "1rem" }}>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                Asset Sheet (4 frames)
+              </h4>
               {walkSpriteSheetUrl && (
                 <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "walk" ? 0.5 : 1 }}>
-                  <img src={walkSpriteSheetUrl} alt="Walk sprite sheet" />
+                  <img src={walkSpriteSheetUrl} alt="Asset sprite sheet" />
                 </div>
               )}
               <button
@@ -1420,85 +1774,116 @@ export default function Home() {
                 disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
                 style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
               >
-                {regeneratingSpriteSheet === "walk" ? "Regenerating..." : "Regen Walk"}
+                {regeneratingSpriteSheet === "walk" ? "Regenerating..." : "Regen Asset Sheet"}
               </button>
             </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump (4 frames)</h4>
-              {jumpSpriteSheetUrl && (
-                <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "jump" ? 0.5 : 1 }}>
-                  <img src={jumpSpriteSheetUrl} alt="Jump sprite sheet" />
-                </div>
-              )}
-              <button
-                className="btn btn-secondary"
-                onClick={() => regenerateSpriteSheet("jump")}
-                disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
-                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
-              >
-                {regeneratingSpriteSheet === "jump" ? "Regenerating..." : "Regen Jump"}
-              </button>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk (4 frames)</h4>
+                {walkSpriteSheetUrl && (
+                  <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "walk" ? 0.5 : 1 }}>
+                    <img src={walkSpriteSheetUrl} alt="Walk sprite sheet" />
+                  </div>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => regenerateSpriteSheet("walk")}
+                  disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
+                >
+                  {regeneratingSpriteSheet === "walk" ? "Regenerating..." : "Regen Walk"}
+                </button>
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump (4 frames)</h4>
+                {jumpSpriteSheetUrl && (
+                  <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "jump" ? 0.5 : 1 }}>
+                    <img src={jumpSpriteSheetUrl} alt="Jump sprite sheet" />
+                  </div>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => regenerateSpriteSheet("jump")}
+                  disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
+                >
+                  {regeneratingSpriteSheet === "jump" ? "Regenerating..." : "Regen Jump"}
+                </button>
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack (4 frames)</h4>
+                {attackSpriteSheetUrl && (
+                  <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "attack" ? 0.5 : 1 }}>
+                    <img src={attackSpriteSheetUrl} alt="Attack sprite sheet" />
+                  </div>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => regenerateSpriteSheet("attack")}
+                  disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
+                >
+                  {regeneratingSpriteSheet === "attack" ? "Regenerating..." : "Regen Attack"}
+                </button>
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle (4 frames)</h4>
+                {idleSpriteSheetUrl && (
+                  <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "idle" ? 0.5 : 1 }}>
+                    <img src={idleSpriteSheetUrl} alt="Idle sprite sheet" />
+                  </div>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => regenerateSpriteSheet("idle")}
+                  disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
+                >
+                  {regeneratingSpriteSheet === "idle" ? "Regenerating..." : "Regen Idle"}
+                </button>
+              </div>
             </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack (4 frames)</h4>
-              {attackSpriteSheetUrl && (
-                <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "attack" ? 0.5 : 1 }}>
-                  <img src={attackSpriteSheetUrl} alt="Attack sprite sheet" />
-                </div>
-              )}
-              <button
-                className="btn btn-secondary"
-                onClick={() => regenerateSpriteSheet("attack")}
-                disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
-                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
-              >
-                {regeneratingSpriteSheet === "attack" ? "Regenerating..." : "Regen Attack"}
-              </button>
-            </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle (4 frames)</h4>
-              {idleSpriteSheetUrl && (
-                <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "idle" ? 0.5 : 1 }}>
-                  <img src={idleSpriteSheetUrl} alt="Idle sprite sheet" />
-                </div>
-              )}
-              <button
-                className="btn btn-secondary"
-                onClick={() => regenerateSpriteSheet("idle")}
-                disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
-                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
-              >
-                {regeneratingSpriteSheet === "idle" ? "Regenerating..." : "Regen Idle"}
-              </button>
-            </div>
-          </div>
+          )}
 
           {(isGeneratingSpriteSheet || regeneratingSpriteSheet) && (
             <div className="loading">
               <FalSpinner />
               <span className="loading-text">
-                {isGeneratingSpriteSheet ? "Regenerating all sprite sheets..." : `Regenerating ${regeneratingSpriteSheet} sprite sheet...`}
+                {isGeneratingSpriteSheet
+                  ? generationMode === "asset"
+                    ? "Generating asset sheet..."
+                    : "Regenerating all sprite sheets..."
+                  : `Regenerating ${regeneratingSpriteSheet} sprite sheet...`}
               </span>
             </div>
           )}
 
           <div className="button-group">
             <button className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
-              ← Back to Character
+              ← Back to {generationMode === "asset" ? "Assets" : "Character"}
             </button>
             <button
               className="btn btn-secondary"
               onClick={generateSpriteSheet}
               disabled={isGeneratingSpriteSheet || isRemovingBg}
             >
-              Regenerate All
+              {generationMode === "asset" ? "Regenerate Asset Sheet" : "Regenerate All"}
             </button>
             <button
               className="btn btn-success"
               onClick={removeBackground}
-              disabled={isRemovingBg || isGeneratingSpriteSheet || !walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl}
+              disabled={
+                generationMode === "asset"
+                  ? isRemovingBg || isGeneratingSpriteSheet || !walkSpriteSheetUrl
+                  : isRemovingBg || isGeneratingSpriteSheet || !walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl
+              }
             >
-              {isRemovingBg ? "Removing Backgrounds..." : "Remove Backgrounds →"}
+              {isRemovingBg
+                ? "Removing Backgrounds..."
+                : generationMode === "asset"
+                ? "Remove Background →"
+                : "Remove Backgrounds →"}
             </button>
           </div>
 
@@ -1516,47 +1901,62 @@ export default function Home() {
         <div className="step-container">
           <h2 className="step-title">
             <span className="step-number">3</span>
-            Backgrounds Removed
+            {generationMode === "asset" ? "Background Removed" : "Backgrounds Removed"}
           </h2>
 
           <p className="description-text">
-            Backgrounds have been removed. Now let&apos;s extract the individual frames.
+            {generationMode === "asset"
+              ? "Background has been removed. Now let&apos;s extract the individual frames."
+              : "Backgrounds have been removed. Now let&apos;s extract the individual frames."}
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk Cycle</h4>
+          {generationMode === "asset" ? (
+            <div style={{ marginBottom: "1rem" }}>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                Asset Sheet
+              </h4>
               {walkBgRemovedUrl && (
                 <div className="image-preview" style={{ margin: 0 }}>
-                  <img src={walkBgRemovedUrl} alt="Walk sprite sheet with background removed" />
+                  <img src={walkBgRemovedUrl} alt="Asset sheet with background removed" />
                 </div>
               )}
             </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump</h4>
-              {jumpBgRemovedUrl && (
-                <div className="image-preview" style={{ margin: 0 }}>
-                  <img src={jumpBgRemovedUrl} alt="Jump sprite sheet with background removed" />
-                </div>
-              )}
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk Cycle</h4>
+                {walkBgRemovedUrl && (
+                  <div className="image-preview" style={{ margin: 0 }}>
+                    <img src={walkBgRemovedUrl} alt="Walk sprite sheet with background removed" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump</h4>
+                {jumpBgRemovedUrl && (
+                  <div className="image-preview" style={{ margin: 0 }}>
+                    <img src={jumpBgRemovedUrl} alt="Jump sprite sheet with background removed" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack</h4>
+                {attackBgRemovedUrl && (
+                  <div className="image-preview" style={{ margin: 0 }}>
+                    <img src={attackBgRemovedUrl} alt="Attack sprite sheet with background removed" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle</h4>
+                {idleBgRemovedUrl && (
+                  <div className="image-preview" style={{ margin: 0 }}>
+                    <img src={idleBgRemovedUrl} alt="Idle sprite sheet with background removed" />
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack</h4>
-              {attackBgRemovedUrl && (
-                <div className="image-preview" style={{ margin: 0 }}>
-                  <img src={attackBgRemovedUrl} alt="Attack sprite sheet with background removed" />
-                </div>
-              )}
-            </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle</h4>
-              {idleBgRemovedUrl && (
-                <div className="image-preview" style={{ margin: 0 }}>
-                  <img src={idleBgRemovedUrl} alt="Idle sprite sheet with background removed" />
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
           <div className="button-group">
             <button className="btn btn-secondary" onClick={() => setCurrentStep(2)}>
@@ -1582,35 +1982,37 @@ export default function Home() {
           </p>
 
           {/* Tab buttons */}
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-            <button
-              className={`btn ${activeSheet === "walk" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setActiveSheet("walk")}
-            >
-              Walk Cycle
-            </button>
-            <button
-              className={`btn ${activeSheet === "jump" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setActiveSheet("jump")}
-            >
-              Jump
-            </button>
-            <button
-              className={`btn ${activeSheet === "attack" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setActiveSheet("attack")}
-            >
-              Attack
-            </button>
-            <button
-              className={`btn ${activeSheet === "idle" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setActiveSheet("idle")}
-            >
-              Idle
-            </button>
-          </div>
+          {generationMode !== "asset" && (
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+              <button
+                className={`btn ${activeSheet === "walk" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setActiveSheet("walk")}
+              >
+                Walk Cycle
+              </button>
+              <button
+                className={`btn ${activeSheet === "jump" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setActiveSheet("jump")}
+              >
+                Jump
+              </button>
+              <button
+                className={`btn ${activeSheet === "attack" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setActiveSheet("attack")}
+              >
+                Attack
+              </button>
+              <button
+                className={`btn ${activeSheet === "idle" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setActiveSheet("idle")}
+              >
+                Idle
+              </button>
+            </div>
+          )}
 
           {/* Walk frame extraction */}
-          {activeSheet === "walk" && (
+          {(generationMode === "asset" || activeSheet === "walk") && (
             <>
               <div className="frame-controls">
                 <label htmlFor="walkGridCols">Columns:</label>
@@ -1676,8 +2078,10 @@ export default function Home() {
                 <div className="frames-preview">
                   {walkExtractedFrames.map((frame, index) => (
                     <div key={index} className="frame-thumb">
-                      <img src={frame.dataUrl} alt={`Walk frame ${index + 1}`} />
-                      <div className="frame-label">Walk {index + 1}</div>
+                      <img src={frame.dataUrl} alt={`Frame ${index + 1}`} />
+                      <div className="frame-label">
+                        {generationMode === "asset" ? `Asset ${index + 1}` : `Walk ${index + 1}`}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1686,7 +2090,7 @@ export default function Home() {
           )}
 
           {/* Jump frame extraction */}
-          {activeSheet === "jump" && (
+          {generationMode !== "asset" && activeSheet === "jump" && (
             <>
               <div className="frame-controls">
                 <label htmlFor="jumpGridCols">Columns:</label>
@@ -1762,7 +2166,7 @@ export default function Home() {
           )}
 
           {/* Attack frame extraction */}
-          {activeSheet === "attack" && (
+          {generationMode !== "asset" && activeSheet === "attack" && (
             <>
               <div className="frame-controls">
                 <label htmlFor="attackGridCols">Columns:</label>
@@ -1838,7 +2242,7 @@ export default function Home() {
           )}
 
           {/* Idle frame extraction */}
-          {activeSheet === "idle" && (
+          {generationMode !== "asset" && activeSheet === "idle" && (
             <>
               <div className="frame-controls">
                 <label htmlFor="idleGridCols">Columns:</label>
@@ -1920,149 +2324,187 @@ export default function Home() {
             <button
               className="btn btn-success"
               onClick={proceedToSandbox}
-              disabled={walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0 || attackExtractedFrames.length === 0 || idleExtractedFrames.length === 0}
+              disabled={
+                generationMode === "asset"
+                  ? walkExtractedFrames.length === 0
+                  : walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0 || attackExtractedFrames.length === 0 || idleExtractedFrames.length === 0
+              }
             >
-              Try in Sandbox →
+              {generationMode === "asset" ? "Finish →" : "Try in Sandbox →"}
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 5: Animation Preview & Export */}
+      {/* Step 5: Animation Preview & Export / Finish */}
       {currentStep === 5 && (
         <div className="step-container">
           <h2 className="step-title">
             <span className="step-number">5</span>
-            Preview & Export
+            {generationMode === "asset" ? "Finish" : "Preview & Export"}
           </h2>
 
-          <p className="description-text">Walk animation preview. Test both walk and jump in the sandbox!</p>
-
-          <div className="animation-preview">
-            <div className="animation-canvas-container">
-              <canvas ref={canvasRef} className="animation-canvas" />
-              <div className="direction-indicator">
-                {direction === "right" ? "→ Walking Right" : "← Walking Left"}
+          {generationMode === "asset" ? (
+            <>
+              <p className="description-text">
+                Your asset frames are ready. Files are auto-saved to `output/game-assets/`.
+              </p>
+              <div className="export-section">
+                <h3 style={{ marginBottom: "0.75rem" }}>Export</h3>
+                <div className="export-options">
+                  <button className="btn btn-primary" onClick={exportWalkSpriteSheet}>
+                    Asset Sheet
+                  </button>
+                  <button className="btn btn-secondary" onClick={exportAllFrames}>
+                    All Frames
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="keyboard-hint">
-              Hold <kbd>D</kbd> or <kbd>→</kbd> to walk right | Hold <kbd>A</kbd> or <kbd>←</kbd> to walk left | <kbd>Space</kbd> to stop
-            </div>
-
-            <div className="animation-controls">
-              <button
-                className={`btn ${isPlaying ? "btn-secondary" : "btn-primary"}`}
-                onClick={() => setIsPlaying(!isPlaying)}
-              >
-                {isPlaying ? "Stop" : "Play"}
-              </button>
-
-              <div className="fps-control">
-                <label>FPS: {fps}</label>
-                <input
-                  type="range"
-                  className="fps-slider"
-                  min={1}
-                  max={24}
-                  value={fps}
-                  onChange={(e) => setFps(parseInt(e.target.value))}
-                />
+              <div className="button-group" style={{ marginTop: "1.5rem" }}>
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(4)}>
+                  ← Back to Frame Extraction
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    resetFlowState();
+                  }}
+                >
+                  Start New Asset
+                </button>
               </div>
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <p className="description-text">Walk animation preview. Test both walk and jump in the sandbox!</p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", margin: "1rem 0" }}>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk Frames</h4>
-              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
-                {walkExtractedFrames.map((frame, index) => (
-                  <div
-                    key={index}
-                    className={`frame-thumb ${currentFrameIndex === index ? "active" : ""}`}
-                    onClick={() => setCurrentFrameIndex(index)}
+              <div className="animation-preview">
+                <div className="animation-canvas-container">
+                  <canvas ref={canvasRef} className="animation-canvas" />
+                  <div className="direction-indicator">
+                    {direction === "right" ? "→ Walking Right" : "← Walking Left"}
+                  </div>
+                </div>
+
+                <div className="keyboard-hint">
+                  Hold <kbd>D</kbd> or <kbd>→</kbd> to walk right | Hold <kbd>A</kbd> or <kbd>←</kbd> to walk left | <kbd>Space</kbd> to stop
+                </div>
+
+                <div className="animation-controls">
+                  <button
+                    className={`btn ${isPlaying ? "btn-secondary" : "btn-primary"}`}
+                    onClick={() => setIsPlaying(!isPlaying)}
                   >
-                    <img src={frame.dataUrl} alt={`Walk ${index + 1}`} />
-                    <div className="frame-label">{index + 1}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump Frames</h4>
-              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
-                {jumpExtractedFrames.map((frame, index) => (
-                  <div key={index} className="frame-thumb">
-                    <img src={frame.dataUrl} alt={`Jump ${index + 1}`} />
-                    <div className="frame-label">{index + 1}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack Frames</h4>
-              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
-                {attackExtractedFrames.map((frame, index) => (
-                  <div key={index} className="frame-thumb">
-                    <img src={frame.dataUrl} alt={`Attack ${index + 1}`} />
-                    <div className="frame-label">{index + 1}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle Frames</h4>
-              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
-                {idleExtractedFrames.map((frame, index) => (
-                  <div key={index} className="frame-thumb">
-                    <img src={frame.dataUrl} alt={`Idle ${index + 1}`} />
-                    <div className="frame-label">{index + 1}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+                    {isPlaying ? "Stop" : "Play"}
+                  </button>
 
-          <div className="export-section">
-            <h3 style={{ marginBottom: "0.75rem" }}>Export</h3>
-            <div className="export-options">
-              <button className="btn btn-primary" onClick={exportWalkSpriteSheet}>
-                Walk Sheet
-              </button>
-              <button className="btn btn-primary" onClick={exportJumpSpriteSheet}>
-                Jump Sheet
-              </button>
-              <button className="btn btn-primary" onClick={exportAttackSpriteSheet}>
-                Attack Sheet
-              </button>
-              <button className="btn btn-primary" onClick={exportIdleSpriteSheet}>
-                Idle Sheet
-              </button>
-              <button className="btn btn-secondary" onClick={exportAllFrames}>
-                All Frames
-              </button>
-            </div>
-          </div>
+                  <div className="fps-control">
+                    <label>FPS: {fps}</label>
+                    <input
+                      type="range"
+                      className="fps-slider"
+                      min={1}
+                      max={24}
+                      value={fps}
+                      onChange={(e) => setFps(parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </div>
 
-          <div className="button-group" style={{ marginTop: "1.5rem" }}>
-            <button className="btn btn-secondary" onClick={() => setCurrentStep(4)}>
-              ← Back to Frame Extraction
-            </button>
-            <button
-              className="btn btn-success"
-              onClick={() => {
-                setCompletedSteps((prev) => new Set([...prev, 5]));
-                setCurrentStep(6);
-              }}
-            >
-              Try in Sandbox →
-            </button>
-          </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", margin: "1rem 0" }}>
+                <div>
+                  <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk Frames</h4>
+                  <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                    {walkExtractedFrames.map((frame, index) => (
+                      <div
+                        key={index}
+                        className={`frame-thumb ${currentFrameIndex === index ? "active" : ""}`}
+                        onClick={() => setCurrentFrameIndex(index)}
+                      >
+                        <img src={frame.dataUrl} alt={`Walk ${index + 1}`} />
+                        <div className="frame-label">{index + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Jump Frames</h4>
+                  <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                    {jumpExtractedFrames.map((frame, index) => (
+                      <div key={index} className="frame-thumb">
+                        <img src={frame.dataUrl} alt={`Jump ${index + 1}`} />
+                        <div className="frame-label">{index + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Attack Frames</h4>
+                  <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                    {attackExtractedFrames.map((frame, index) => (
+                      <div key={index} className="frame-thumb">
+                        <img src={frame.dataUrl} alt={`Attack ${index + 1}`} />
+                        <div className="frame-label">{index + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle Frames</h4>
+                  <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                    {idleExtractedFrames.map((frame, index) => (
+                      <div key={index} className="frame-thumb">
+                        <img src={frame.dataUrl} alt={`Idle ${index + 1}`} />
+                        <div className="frame-label">{index + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="export-section">
+                <h3 style={{ marginBottom: "0.75rem" }}>Export</h3>
+                <div className="export-options">
+                  <button className="btn btn-primary" onClick={exportWalkSpriteSheet}>
+                    Walk Sheet
+                  </button>
+                  <button className="btn btn-primary" onClick={exportJumpSpriteSheet}>
+                    Jump Sheet
+                  </button>
+                  <button className="btn btn-primary" onClick={exportAttackSpriteSheet}>
+                    Attack Sheet
+                  </button>
+                  <button className="btn btn-primary" onClick={exportIdleSpriteSheet}>
+                    Idle Sheet
+                  </button>
+                  <button className="btn btn-secondary" onClick={exportAllFrames}>
+                    All Frames
+                  </button>
+                </div>
+              </div>
+
+              <div className="button-group" style={{ marginTop: "1.5rem" }}>
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(4)}>
+                  ← Back to Frame Extraction
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={() => {
+                    setCompletedSteps((prev) => new Set([...prev, 5]));
+                    setCurrentStep(6);
+                  }}
+                >
+                  Try in Sandbox →
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {/* Step 6: Sandbox */}
-      {currentStep === 6 && (
+      {currentStep === 6 && generationMode !== "asset" && (
         <div className="step-container">
           <h2 className="step-title">
             <span className="step-number">5</span>
@@ -2208,27 +2650,7 @@ export default function Home() {
               ← Back to Frame Extraction
             </button>
             <button className="btn btn-secondary" onClick={() => {
-              // Reset everything
-              setCurrentStep(1);
-              setCompletedSteps(new Set());
-              setCharacterImageUrl(null);
-              setWalkSpriteSheetUrl(null);
-              setJumpSpriteSheetUrl(null);
-              setAttackSpriteSheetUrl(null);
-              setIdleSpriteSheetUrl(null);
-              setWalkBgRemovedUrl(null);
-              setJumpBgRemovedUrl(null);
-              setAttackBgRemovedUrl(null);
-              setIdleBgRemovedUrl(null);
-              setWalkExtractedFrames([]);
-              setJumpExtractedFrames([]);
-              setAttackExtractedFrames([]);
-              setIdleExtractedFrames([]);
-              setCharacterPrompt("");
-              setInputImageUrl("");
-              setCharacterInputMode("text");
-              setBackgroundMode("default");
-              setCustomBackgroundLayers({ layer1Url: null, layer2Url: null, layer3Url: null });
+              resetFlowState();
             }}>
               Start New Sprite
             </button>
