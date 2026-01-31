@@ -452,21 +452,26 @@ export default function Home() {
     try {
       const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       if (generationMode === "asset") {
+        if (assetVariantType === "manual" && assetVariantInputs.every((value) => !value.trim())) {
+          setError("Please provide at least one manual frame instruction.");
+          setIsGeneratingSpriteSheet(false);
+          return;
+        }
         const manualLines = assetVariantInputs
           .map((value, index) => value.trim() ? `Frame ${index + 1}: ${value.trim()}` : null)
           .filter(Boolean)
           .join("\n");
         const variantInstructions: Record<AssetVariantType, string> = {
           automatic:
-            "Let the model decide 4 coherent variants of the same asset.",
+            "Let the model decide 4 coherent variants of the same asset. Keep them subtle and consistent.",
           distinct:
-            "Create 4 distinct but stylistically consistent variants of the same asset. Each frame should be clearly different.",
+            "Create 4 distinct but stylistically consistent variants of the same asset. Each frame should be clearly different. Avoid animation; these are separate variants.",
           "subtle-animation":
             "Create a subtle animation across the 4 frames (gentle sway, bob, blink, or small state changes).",
           "size-variations":
-            "Create 4 size variations (small, medium, large, extra large) while keeping proportions consistent.",
+            "Create 4 size variations (small, medium, large, extra large) while keeping proportions consistent. No other changes.",
           "damage-variations":
-            "Create 4 damage/age states (pristine, lightly worn, damaged, heavily damaged).",
+            "Create 4 damage/age states (pristine, lightly worn, damaged, heavily damaged). Keep shape consistent.",
           "color-swaps":
             "Create 4 color variations using ONLY the provided palette. Keep shape and details identical.",
           "shape-variants":
@@ -477,7 +482,7 @@ export default function Home() {
               : "Follow the per-frame instructions provided by the user.",
         };
         const variantNote = variantInstructions[assetVariantType];
-        const assetPrompt = `${ASSET_SPRITE_PROMPT}\n\nVariant style: ${variantNote}`;
+        const assetPrompt = `${ASSET_SPRITE_PROMPT}\n\nVariant style:\n${variantNote}`;
         const response = await fetch("/api/generate-sprite-sheet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
