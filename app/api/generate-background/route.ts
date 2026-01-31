@@ -7,16 +7,17 @@ fal.config({
 });
 
 const LAYER1_PROMPT = (characterPrompt: string) =>
-  `Create the SKY/BACKDROP layer for a side-scrolling pixel art game parallax background.
+  `Create the SKY/BACKDROP layer for a side-scrolling game parallax background.
 
 This is for a character: "${characterPrompt}"
 
 Create an environment that fits this character's world. This is the FURTHEST layer - only sky and very distant elements (distant mountains, clouds, horizon).
 
-Style: Pixel art, 32-bit retro game aesthetic, matching the character's style.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
 This is a wide panoramic scene.`;
 
-const LAYER2_PROMPT = `Create the MIDDLE layer of a 3-layer parallax background for a side-scrolling pixel art game.
+const LAYER2_PROMPT = `Create the MIDDLE layer of a 3-layer parallax background for a side-scrolling game.
 
 I've sent you images of: 1) the character, 2) the background/sky layer already created.
 
@@ -25,16 +26,18 @@ Examples: Naruto → Hidden Leaf Village with Hokage monument, Goku → World To
 
 Elements should fill the frame from middle down to bottom.
 
-Style: Pixel art matching the other images.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
 IMPORTANT: Use a transparent background (checkerboard pattern) so this layer can overlay the others.`;
 
-const LAYER3_PROMPT = `Create the FOREGROUND layer of a 3-layer parallax background for a side-scrolling pixel art game.
+const LAYER3_PROMPT = `Create the FOREGROUND layer of a 3-layer parallax background for a side-scrolling game.
 
 I've sent you images of: 1) the character, 2) the background/sky layer, 3) the middle layer.
 
 Create the closest foreground elements (ground, grass, rocks, platforms - whatever fits the character's world) that complete the scene.
 
-Style: Pixel art matching the other images.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
 IMPORTANT: Use a transparent background (checkerboard pattern) so this layer can overlay the others.`;
 
 async function generateLayer(

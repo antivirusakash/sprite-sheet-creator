@@ -359,6 +359,7 @@ export default function Home() {
     setIsGeneratingCharacter(true);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       const requestBody = characterInputMode === "image"
         ? { imageUrl: inputImageUrl, prompt: characterPrompt || undefined }
         : { prompt: characterPrompt };
@@ -376,6 +377,7 @@ export default function Home() {
       }
 
       setCharacterImageUrl(data.imageUrl);
+      await saveImageToOutput(data.imageUrl, `character-${batchId}.png`, "characters");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate character");
     } finally {
@@ -390,6 +392,7 @@ export default function Home() {
     setIsGeneratingSpriteSheet(true);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       // Send parallel requests for walk, jump, attack, and idle sprite sheets
       const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/generate-sprite-sheet", {
@@ -436,6 +439,12 @@ export default function Home() {
       setJumpSpriteSheetUrl(jumpData.imageUrl);
       setAttackSpriteSheetUrl(attackData.imageUrl);
       setIdleSpriteSheetUrl(idleData.imageUrl);
+      await Promise.all([
+        saveImageToOutput(walkData.imageUrl, `walk-${batchId}.png`, "sprite-sheets/raw"),
+        saveImageToOutput(jumpData.imageUrl, `jump-${batchId}.png`, "sprite-sheets/raw"),
+        saveImageToOutput(attackData.imageUrl, `attack-${batchId}.png`, "sprite-sheets/raw"),
+        saveImageToOutput(idleData.imageUrl, `idle-${batchId}.png`, "sprite-sheets/raw"),
+      ]);
       setCompletedSteps((prev) => new Set([...prev, 1]));
       setCurrentStep(2);
     } catch (err) {
@@ -454,6 +463,7 @@ export default function Home() {
     setRegeneratingSpriteSheet(type);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       const response = await fetch("/api/generate-sprite-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -475,6 +485,7 @@ export default function Home() {
       } else if (type === "idle") {
         setIdleSpriteSheetUrl(data.imageUrl);
       }
+      await saveImageToOutput(data.imageUrl, `${type}-${batchId}.png`, "sprite-sheets/raw");
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to regenerate ${type} sprite sheet`);
     } finally {
@@ -489,6 +500,7 @@ export default function Home() {
     setIsRemovingBg(true);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       // Send parallel requests for all sprite sheets
       const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/remove-background", {
@@ -535,6 +547,12 @@ export default function Home() {
       setJumpBgRemovedUrl(jumpData.imageUrl);
       setAttackBgRemovedUrl(attackData.imageUrl);
       setIdleBgRemovedUrl(idleData.imageUrl);
+      await Promise.all([
+        saveImageToOutput(walkData.imageUrl, `walk-${batchId}.png`, "sprite-sheets/transparent"),
+        saveImageToOutput(jumpData.imageUrl, `jump-${batchId}.png`, "sprite-sheets/transparent"),
+        saveImageToOutput(attackData.imageUrl, `attack-${batchId}.png`, "sprite-sheets/transparent"),
+        saveImageToOutput(idleData.imageUrl, `idle-${batchId}.png`, "sprite-sheets/transparent"),
+      ]);
       setWalkSpriteSheetDimensions({ width: walkData.width, height: walkData.height });
       setJumpSpriteSheetDimensions({ width: jumpData.width, height: jumpData.height });
       setAttackSpriteSheetDimensions({ width: attackData.width, height: attackData.height });
@@ -555,6 +573,7 @@ export default function Home() {
     setIsGeneratingBackground(true);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       const response = await fetch("/api/generate-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -575,6 +594,11 @@ export default function Home() {
         layer2Url: data.layer2Url,
         layer3Url: data.layer3Url,
       });
+      await Promise.all([
+        saveImageToOutput(data.layer1Url, `layer1-${batchId}.png`, "backgrounds"),
+        saveImageToOutput(data.layer2Url, `layer2-${batchId}.png`, "backgrounds"),
+        saveImageToOutput(data.layer3Url, `layer3-${batchId}.png`, "backgrounds"),
+      ]);
       setBackgroundMode("custom");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate background");
@@ -592,6 +616,7 @@ export default function Home() {
     setRegeneratingLayer(layerNumber);
 
     try {
+      const batchId = new Date().toISOString().replace(/[:.]/g, "-");
       const response = await fetch("/api/generate-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -614,6 +639,11 @@ export default function Home() {
         layer2Url: data.layer2Url,
         layer3Url: data.layer3Url,
       });
+      await Promise.all([
+        saveImageToOutput(data.layer1Url, `layer1-${batchId}.png`, "backgrounds"),
+        saveImageToOutput(data.layer2Url, `layer2-${batchId}.png`, "backgrounds"),
+        saveImageToOutput(data.layer3Url, `layer3-${batchId}.png`, "backgrounds"),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to regenerate layer");
     } finally {
@@ -1018,12 +1048,12 @@ export default function Home() {
   };
 
   // Export functions
-  const saveImageToOutput = async (imageUrl: string, filename: string) => {
+  const saveImageToOutput = async (imageUrl: string, filename: string, subdir?: string) => {
     try {
       const response = await fetch("/api/save-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl, filename }),
+        body: JSON.stringify({ imageUrl, filename, subdir }),
       });
       const data = await response.json();
       if (!response.ok) {

@@ -2,11 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
-const OUTPUT_DIR = path.join(process.cwd(), "output");
+const OUTPUT_DIR = path.resolve(process.cwd(), "output");
+
+const sanitizeSegment = (segment: string) =>
+  segment.replace(/[^a-zA-Z0-9_.-]/g, "_");
 
 const sanitizeFilename = (filename?: string) => {
   const baseName = filename ? path.basename(filename) : "sprite.png";
-  return baseName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  return sanitizeSegment(baseName);
+};
+
+const buildOutputPath = (subdir: string | undefined, filename: string) => {
+  const safeSegments = subdir
+    ? subdir
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => sanitizeSegment(segment))
+    : [];
+  const safeName = sanitizeFilename(filename);
+  const outputPath = path.resolve(OUTPUT_DIR, ...safeSegments, safeName);
+  if (!outputPath.startsWith(OUTPUT_DIR)) {
+    throw new Error("Invalid output path");
+  }
+  return {
+    outputPath,
+    outputDir: path.dirname(outputPath),
+    relativePath: path.join("output", ...safeSegments, safeName),
+  };
 };
 
 const getImageBuffer = async (imageUrl: string) => {
@@ -28,20 +50,19 @@ const getImageBuffer = async (imageUrl: string) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageUrl, filename } = await request.json();
+    const { imageUrl, filename, subdir } = await request.json();
 
     if (!imageUrl || typeof imageUrl !== "string") {
       return NextResponse.json({ error: "imageUrl is required" }, { status: 400 });
     }
 
-    const safeName = sanitizeFilename(filename);
     const buffer = await getImageBuffer(imageUrl);
+    const { outputPath, outputDir, relativePath } = buildOutputPath(subdir, filename);
 
-    await mkdir(OUTPUT_DIR, { recursive: true });
-    const outputPath = path.join(OUTPUT_DIR, safeName);
+    await mkdir(outputDir, { recursive: true });
     await writeFile(outputPath, buffer);
 
-    return NextResponse.json({ savedPath: `output/${safeName}` });
+    return NextResponse.json({ savedPath: relativePath });
   } catch (error) {
     console.error("Error saving image:", error);
     return NextResponse.json({ error: "Failed to save image" }, { status: 500 });

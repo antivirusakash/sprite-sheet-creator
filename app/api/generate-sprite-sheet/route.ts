@@ -8,7 +8,7 @@ fal.config({
 
 const WALK_SPRITE_PROMPT = `Create a 4-frame pixel art walk cycle sprite sheet of this character.
 
-Arrange the 4 frames in a 2x2 grid on white background. The character is walking to the right.
+Arrange the 4 frames in a 2x2 grid on transparent background. The character is walking to the right.
 
 Top row (frames 1-2):
 Frame 1 (top-left): Right leg forward, left leg back - stride position
@@ -20,11 +20,11 @@ Frame 4 (bottom-right): Legs close together, passing/crossing - transition back
 
 Each frame shows a different phase of the walking motion. This creates a smooth looping walk cycle.
 
-Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right.`;
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding. Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF. Same character design in all frames. Character facing right.`;
 
 const JUMP_SPRITE_PROMPT = `Create a 4-frame pixel art jump animation sprite sheet of this character.
 
-Arrange the 4 frames in a 2x2 grid on white background. The character is jumping.
+Arrange the 4 frames in a 2x2 grid on transparent background. The character is jumping.
 
 Top row (frames 1-2):
 Frame 1 (top-left): Crouch/anticipation - character slightly crouched, knees bent, preparing to jump
@@ -34,11 +34,11 @@ Bottom row (frames 3-4):
 Frame 3 (bottom-left): Apex/peak - character at highest point of jump, body stretched or tucked
 Frame 4 (bottom-right): Landing - character landing, slight crouch to absorb impact
 
-Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right.`;
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding. Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF. Same character design in all frames. Character facing right.`;
 
 const ATTACK_SPRITE_PROMPT = `Create a 4-frame pixel art attack animation sprite sheet of this character.
 
-Arrange the 4 frames in a 2x2 grid on white background. The character is performing an attack that fits their design - could be a sword slash, magic spell, punch, kick, or energy blast depending on what suits the character best.
+Arrange the 4 frames in a 2x2 grid on transparent background. The character is performing an attack that fits their design - could be a sword slash, magic spell, punch, kick, or energy blast depending on what suits the character best.
 
 Top row (frames 1-2):
 Frame 1 (top-left): Wind-up/anticipation - character preparing to attack, pulling back weapon or gathering energy
@@ -48,11 +48,11 @@ Bottom row (frames 3-4):
 Frame 3 (bottom-left): Impact/peak - maximum extension of attack, weapon fully swung or spell at full power
 Frame 4 (bottom-right): Recovery - returning to ready stance
 
-Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right. Make the attack visually dynamic and exciting.`;
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding. Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF. Same character design in all frames. Character facing right. Make the attack visually dynamic and exciting.`;
 
 const IDLE_SPRITE_PROMPT = `Create a 4-frame pixel art idle/breathing animation sprite sheet of this character.
 
-Arrange the 4 frames in a 2x2 grid on white background. The character is standing still but with subtle idle animation.
+Arrange the 4 frames in a 2x2 grid on transparent background. The character is standing still but with subtle idle animation.
 
 Top row (frames 1-2):
 Frame 1 (top-left): Neutral standing pose - relaxed stance
@@ -64,7 +64,7 @@ Frame 4 (bottom-right): Exhale - returning to neutral, slight settle
 
 Keep movements SUBTLE - this is a gentle breathing/idle loop, not dramatic motion. Character should look alive but relaxed.
 
-Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right.`;
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding. Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF. Same character design in all frames. Character facing right.`;
 
 type SpriteType = "walk" | "jump" | "attack" | "idle";
 

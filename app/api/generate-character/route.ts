@@ -6,19 +6,19 @@ fal.config({
   credentials: process.env.FAL_KEY,
 });
 
-const CHARACTER_STYLE_PROMPT = `Generate a single character only, centered in the frame on a plain white background.
-The character should be rendered in detailed 32-bit pixel art style (like PlayStation 1 / SNES era games).
-Include proper shading, highlights, and anti-aliased edges for a polished look.
-The character should have well-defined features, expressive details, and rich colors.
+const CHARACTER_STYLE_PROMPT = `Generate a single character only, centered in the frame on a transparent background.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
+The character should have well-defined features and expressive details.
 Show in a front-facing or 3/4 view pose, standing idle, suitable for sprite sheet animation.`;
 
-const IMAGE_TO_PIXEL_PROMPT = `Transform this character into detailed 32-bit pixel art style (like PlayStation 1 / SNES era games).
+const IMAGE_TO_PIXEL_PROMPT = `Transform this character into 2D flat style for the Happy Periods app.
 IMPORTANT: Must be a FULL BODY shot showing the entire character from head to feet.
-Keep the character centered in the frame on a plain white background.
-Include proper shading, highlights, and anti-aliased edges for a polished look.
-The character should have well-defined features, expressive details, and rich colors.
+Keep the character centered in the frame on a transparent background.
+Style: 2D flat, no gradients, no shadows, no textures. Rounded edges, friendly proportions, centered with padding.
+Use ONLY this palette: #FFF1F5 #FFE1EA #FFC2D4 #FFA3BE #FF7EA2 #FF5A7D #E64B6E #C93F5D #A8334C #7A1E3A #FFC857 #9ED7FF #B7F0D4 #FFFFFF.
 Show in a front-facing or 3/4 view pose, standing idle, suitable for sprite sheet animation.
-Maintain the character's key features, colors, and identity while converting to pixel art.`;
+Maintain the character's key features, colors, and identity while converting to this style.`;
 
 export async function POST(request: NextRequest) {
   try {
