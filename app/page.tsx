@@ -1018,63 +1018,91 @@ export default function Home() {
   };
 
   // Export functions
-  const exportWalkSpriteSheet = () => {
+  const saveImageToOutput = async (imageUrl: string, filename: string) => {
+    try {
+      const response = await fetch("/api/save-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, filename }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save image");
+      }
+      return data.savedPath as string;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save image");
+      return null;
+    }
+  };
+
+  const exportWalkSpriteSheet = async () => {
     if (!walkBgRemovedUrl) return;
+    await saveImageToOutput(walkBgRemovedUrl, "walk-sprite-sheet.png");
     const link = document.createElement("a");
     link.href = walkBgRemovedUrl;
     link.download = "walk-sprite-sheet.png";
     link.click();
   };
 
-  const exportJumpSpriteSheet = () => {
+  const exportJumpSpriteSheet = async () => {
     if (!jumpBgRemovedUrl) return;
+    await saveImageToOutput(jumpBgRemovedUrl, "jump-sprite-sheet.png");
     const link = document.createElement("a");
     link.href = jumpBgRemovedUrl;
     link.download = "jump-sprite-sheet.png";
     link.click();
   };
 
-  const exportAttackSpriteSheet = () => {
+  const exportAttackSpriteSheet = async () => {
     if (!attackBgRemovedUrl) return;
+    await saveImageToOutput(attackBgRemovedUrl, "attack-sprite-sheet.png");
     const link = document.createElement("a");
     link.href = attackBgRemovedUrl;
     link.download = "attack-sprite-sheet.png";
     link.click();
   };
 
-  const exportIdleSpriteSheet = () => {
+  const exportIdleSpriteSheet = async () => {
     if (!idleBgRemovedUrl) return;
+    await saveImageToOutput(idleBgRemovedUrl, "idle-sprite-sheet.png");
     const link = document.createElement("a");
     link.href = idleBgRemovedUrl;
     link.download = "idle-sprite-sheet.png";
     link.click();
   };
 
-  const exportAllFrames = () => {
+  const exportAllFrames = async () => {
+    const savePromises: Array<Promise<string | null>> = [];
     walkExtractedFrames.forEach((frame, index) => {
+      savePromises.push(saveImageToOutput(frame.dataUrl, `walk-frame-${index + 1}.png`));
       const link = document.createElement("a");
       link.href = frame.dataUrl;
       link.download = `walk-frame-${index + 1}.png`;
       link.click();
     });
     jumpExtractedFrames.forEach((frame, index) => {
+      savePromises.push(saveImageToOutput(frame.dataUrl, `jump-frame-${index + 1}.png`));
       const link = document.createElement("a");
       link.href = frame.dataUrl;
       link.download = `jump-frame-${index + 1}.png`;
       link.click();
     });
     attackExtractedFrames.forEach((frame, index) => {
+      savePromises.push(saveImageToOutput(frame.dataUrl, `attack-frame-${index + 1}.png`));
       const link = document.createElement("a");
       link.href = frame.dataUrl;
       link.download = `attack-frame-${index + 1}.png`;
       link.click();
     });
     idleExtractedFrames.forEach((frame, index) => {
+      savePromises.push(saveImageToOutput(frame.dataUrl, `idle-frame-${index + 1}.png`));
       const link = document.createElement("a");
       link.href = frame.dataUrl;
       link.download = `idle-frame-${index + 1}.png`;
       link.click();
     });
+    await Promise.all(savePromises);
   };
 
   const proceedToFrameExtraction = () => {
