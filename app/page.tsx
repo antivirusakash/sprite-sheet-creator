@@ -90,20 +90,22 @@ export default function Home() {
   const [characterImageUrl, setCharacterImageUrl] = useState<string | null>(null);
   const [isGeneratingCharacter, setIsGeneratingCharacter] = useState(false);
 
-  // Step 2: Sprite sheet generation (walk + jump + attack)
+  // Step 2: Sprite sheet generation (walk + jump + attack + idle)
   const [walkSpriteSheetUrl, setWalkSpriteSheetUrl] = useState<string | null>(null);
   const [jumpSpriteSheetUrl, setJumpSpriteSheetUrl] = useState<string | null>(null);
   const [attackSpriteSheetUrl, setAttackSpriteSheetUrl] = useState<string | null>(null);
+  const [idleSpriteSheetUrl, setIdleSpriteSheetUrl] = useState<string | null>(null);
   const [isGeneratingSpriteSheet, setIsGeneratingSpriteSheet] = useState(false);
 
-  // Step 3: Background removal (walk + jump + attack)
+  // Step 3: Background removal (walk + jump + attack + idle)
   const [walkBgRemovedUrl, setWalkBgRemovedUrl] = useState<string | null>(null);
   const [jumpBgRemovedUrl, setJumpBgRemovedUrl] = useState<string | null>(null);
   const [attackBgRemovedUrl, setAttackBgRemovedUrl] = useState<string | null>(null);
+  const [idleBgRemovedUrl, setIdleBgRemovedUrl] = useState<string | null>(null);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
 
   // Step 4: Frame extraction (grid-based) - walk
-  const [walkGridCols, setWalkGridCols] = useState(3);
+  const [walkGridCols, setWalkGridCols] = useState(2);
   const [walkGridRows, setWalkGridRows] = useState(2);
   const [walkVerticalDividers, setWalkVerticalDividers] = useState<number[]>([]);
   const [walkHorizontalDividers, setWalkHorizontalDividers] = useState<number[]>([]);
@@ -129,10 +131,19 @@ export default function Home() {
   const [attackSpriteSheetDimensions, setAttackSpriteSheetDimensions] = useState({ width: 0, height: 0 });
   const attackSpriteSheetRef = useRef<HTMLImageElement>(null);
 
+  // Step 4: Frame extraction (grid-based) - idle
+  const [idleGridCols, setIdleGridCols] = useState(2);
+  const [idleGridRows, setIdleGridRows] = useState(2);
+  const [idleVerticalDividers, setIdleVerticalDividers] = useState<number[]>([]);
+  const [idleHorizontalDividers, setIdleHorizontalDividers] = useState<number[]>([]);
+  const [idleExtractedFrames, setIdleExtractedFrames] = useState<Frame[]>([]);
+  const [idleSpriteSheetDimensions, setIdleSpriteSheetDimensions] = useState({ width: 0, height: 0 });
+  const idleSpriteSheetRef = useRef<HTMLImageElement>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Which sprite sheet is being edited
-  const [activeSheet, setActiveSheet] = useState<"walk" | "jump" | "attack">("walk");
+  const [activeSheet, setActiveSheet] = useState<"walk" | "jump" | "attack" | "idle">("walk");
 
   // Step 5: Animation preview
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
@@ -204,6 +215,23 @@ export default function Home() {
     }
   }, [attackGridCols, attackGridRows, attackSpriteSheetDimensions.width]);
 
+  // Initialize idle divider positions when grid changes
+  useEffect(() => {
+    if (idleSpriteSheetDimensions.width > 0) {
+      const vPositions: number[] = [];
+      for (let i = 1; i < idleGridCols; i++) {
+        vPositions.push((i / idleGridCols) * 100);
+      }
+      setIdleVerticalDividers(vPositions);
+
+      const hPositions: number[] = [];
+      for (let i = 1; i < idleGridRows; i++) {
+        hPositions.push((i / idleGridRows) * 100);
+      }
+      setIdleHorizontalDividers(hPositions);
+    }
+  }, [idleGridCols, idleGridRows, idleSpriteSheetDimensions.width]);
+
   // Extract walk frames when divider positions change
   useEffect(() => {
     if (walkBgRemovedUrl && walkSpriteSheetDimensions.width > 0) {
@@ -224,6 +252,13 @@ export default function Home() {
       extractAttackFrames();
     }
   }, [attackBgRemovedUrl, attackVerticalDividers, attackHorizontalDividers, attackSpriteSheetDimensions]);
+
+  // Extract idle frames when divider positions change
+  useEffect(() => {
+    if (idleBgRemovedUrl && idleSpriteSheetDimensions.width > 0) {
+      extractIdleFrames();
+    }
+  }, [idleBgRemovedUrl, idleVerticalDividers, idleHorizontalDividers, idleSpriteSheetDimensions]);
 
   // Animation loop (uses walk frames for preview)
   useEffect(() => {
@@ -355,8 +390,8 @@ export default function Home() {
     setIsGeneratingSpriteSheet(true);
 
     try {
-      // Send parallel requests for walk, jump, and attack sprite sheets
-      const [walkResponse, jumpResponse, attackResponse] = await Promise.all([
+      // Send parallel requests for walk, jump, attack, and idle sprite sheets
+      const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/generate-sprite-sheet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -372,11 +407,17 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ characterImageUrl, type: "attack" }),
         }),
+        fetch("/api/generate-sprite-sheet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterImageUrl, type: "idle" }),
+        }),
       ]);
 
       const walkData = await walkResponse.json();
       const jumpData = await jumpResponse.json();
       const attackData = await attackResponse.json();
+      const idleData = await idleResponse.json();
 
       if (!walkResponse.ok) {
         throw new Error(walkData.error || "Failed to generate walk sprite sheet");
@@ -387,10 +428,14 @@ export default function Home() {
       if (!attackResponse.ok) {
         throw new Error(attackData.error || "Failed to generate attack sprite sheet");
       }
+      if (!idleResponse.ok) {
+        throw new Error(idleData.error || "Failed to generate idle sprite sheet");
+      }
 
       setWalkSpriteSheetUrl(walkData.imageUrl);
       setJumpSpriteSheetUrl(jumpData.imageUrl);
       setAttackSpriteSheetUrl(attackData.imageUrl);
+      setIdleSpriteSheetUrl(idleData.imageUrl);
       setCompletedSteps((prev) => new Set([...prev, 1]));
       setCurrentStep(2);
     } catch (err) {
@@ -400,9 +445,9 @@ export default function Home() {
     }
   };
 
-  const [regeneratingSpriteSheet, setRegeneratingSpriteSheet] = useState<"walk" | "jump" | "attack" | null>(null);
+  const [regeneratingSpriteSheet, setRegeneratingSpriteSheet] = useState<"walk" | "jump" | "attack" | "idle" | null>(null);
 
-  const regenerateSpriteSheet = async (type: "walk" | "jump" | "attack") => {
+  const regenerateSpriteSheet = async (type: "walk" | "jump" | "attack" | "idle") => {
     if (!characterImageUrl) return;
 
     setError(null);
@@ -427,6 +472,8 @@ export default function Home() {
         setJumpSpriteSheetUrl(data.imageUrl);
       } else if (type === "attack") {
         setAttackSpriteSheetUrl(data.imageUrl);
+      } else if (type === "idle") {
+        setIdleSpriteSheetUrl(data.imageUrl);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to regenerate ${type} sprite sheet`);
@@ -436,14 +483,14 @@ export default function Home() {
   };
 
   const removeBackground = async () => {
-    if (!walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl) return;
+    if (!walkSpriteSheetUrl || !jumpSpriteSheetUrl || !attackSpriteSheetUrl || !idleSpriteSheetUrl) return;
 
     setError(null);
     setIsRemovingBg(true);
 
     try {
       // Send parallel requests for all sprite sheets
-      const [walkResponse, jumpResponse, attackResponse] = await Promise.all([
+      const [walkResponse, jumpResponse, attackResponse, idleResponse] = await Promise.all([
         fetch("/api/remove-background", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -459,11 +506,17 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ imageUrl: attackSpriteSheetUrl }),
         }),
+        fetch("/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: idleSpriteSheetUrl }),
+        }),
       ]);
 
       const walkData = await walkResponse.json();
       const jumpData = await jumpResponse.json();
       const attackData = await attackResponse.json();
+      const idleData = await idleResponse.json();
 
       if (!walkResponse.ok) {
         throw new Error(walkData.error || "Failed to remove walk background");
@@ -474,13 +527,18 @@ export default function Home() {
       if (!attackResponse.ok) {
         throw new Error(attackData.error || "Failed to remove attack background");
       }
+      if (!idleResponse.ok) {
+        throw new Error(idleData.error || "Failed to remove idle background");
+      }
 
       setWalkBgRemovedUrl(walkData.imageUrl);
       setJumpBgRemovedUrl(jumpData.imageUrl);
       setAttackBgRemovedUrl(attackData.imageUrl);
+      setIdleBgRemovedUrl(idleData.imageUrl);
       setWalkSpriteSheetDimensions({ width: walkData.width, height: walkData.height });
       setJumpSpriteSheetDimensions({ width: jumpData.width, height: jumpData.height });
       setAttackSpriteSheetDimensions({ width: attackData.width, height: attackData.height });
+      setIdleSpriteSheetDimensions({ width: idleData.width, height: idleData.height });
       setCompletedSteps((prev) => new Set([...prev, 2]));
       setCurrentStep(3);
     } catch (err) {
@@ -704,6 +762,53 @@ export default function Home() {
     img.src = attackBgRemovedUrl;
   }, [attackBgRemovedUrl, attackVerticalDividers, attackHorizontalDividers]);
 
+  const extractIdleFrames = useCallback(async () => {
+    if (!idleBgRemovedUrl) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      const frames: Frame[] = [];
+      const colPositions = [0, ...idleVerticalDividers, 100];
+      const rowPositions = [0, ...idleHorizontalDividers, 100];
+
+      for (let row = 0; row < rowPositions.length - 1; row++) {
+        const startY = Math.round((rowPositions[row] / 100) * img.height);
+        const endY = Math.round((rowPositions[row + 1] / 100) * img.height);
+        const frameHeight = endY - startY;
+
+        for (let col = 0; col < colPositions.length - 1; col++) {
+          const startX = Math.round((colPositions[col] / 100) * img.width);
+          const endX = Math.round((colPositions[col + 1] / 100) * img.width);
+          const frameWidth = endX - startX;
+
+          const canvas = document.createElement("canvas");
+          canvas.width = frameWidth;
+          canvas.height = frameHeight;
+          const ctx = canvas.getContext("2d");
+
+          if (ctx) {
+            ctx.drawImage(img, startX, startY, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+            const contentBounds = getContentBounds(ctx, frameWidth, frameHeight);
+            frames.push({
+              dataUrl: canvas.toDataURL("image/png"),
+              x: startX,
+              y: startY,
+              width: frameWidth,
+              height: frameHeight,
+              contentBounds,
+            });
+          }
+        }
+      }
+
+      setIdleExtractedFrames(frames);
+    };
+
+    img.src = idleBgRemovedUrl;
+  }, [idleBgRemovedUrl, idleVerticalDividers, idleHorizontalDividers]);
+
   // Walk vertical divider drag handling
   const handleWalkVerticalDividerDrag = (index: number, e: React.MouseEvent) => {
     e.preventDefault();
@@ -860,6 +965,58 @@ export default function Home() {
     window.addEventListener("mouseup", handleMouseUp);
   };
 
+  // Idle vertical divider drag handling
+  const handleIdleVerticalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = idleSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeX = moveEvent.clientX - imgRect.left;
+      const percentage = Math.max(0, Math.min(100, (relativeX / imgRect.width) * 100));
+
+      const newPositions = [...idleVerticalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setIdleVerticalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Idle horizontal divider drag handling
+  const handleIdleHorizontalDividerDrag = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const imgRect = idleSpriteSheetRef.current?.getBoundingClientRect();
+    if (!imgRect) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const relativeY = moveEvent.clientY - imgRect.top;
+      const percentage = Math.max(0, Math.min(100, (relativeY / imgRect.height) * 100));
+
+      const newPositions = [...idleHorizontalDividers];
+      const minPos = index > 0 ? newPositions[index - 1] + 2 : 2;
+      const maxPos = index < newPositions.length - 1 ? newPositions[index + 1] - 2 : 98;
+      newPositions[index] = Math.max(minPos, Math.min(maxPos, percentage));
+      setIdleHorizontalDividers(newPositions);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   // Export functions
   const exportWalkSpriteSheet = () => {
     if (!walkBgRemovedUrl) return;
@@ -885,6 +1042,14 @@ export default function Home() {
     link.click();
   };
 
+  const exportIdleSpriteSheet = () => {
+    if (!idleBgRemovedUrl) return;
+    const link = document.createElement("a");
+    link.href = idleBgRemovedUrl;
+    link.download = "idle-sprite-sheet.png";
+    link.click();
+  };
+
   const exportAllFrames = () => {
     walkExtractedFrames.forEach((frame, index) => {
       const link = document.createElement("a");
@@ -902,6 +1067,12 @@ export default function Home() {
       const link = document.createElement("a");
       link.href = frame.dataUrl;
       link.download = `attack-frame-${index + 1}.png`;
+      link.click();
+    });
+    idleExtractedFrames.forEach((frame, index) => {
+      const link = document.createElement("a");
+      link.href = frame.dataUrl;
+      link.download = `idle-frame-${index + 1}.png`;
       link.click();
     });
   };
@@ -1179,7 +1350,7 @@ export default function Home() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <div>
-              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk (6 frames)</h4>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Walk (4 frames)</h4>
               {walkSpriteSheetUrl && (
                 <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "walk" ? 0.5 : 1 }}>
                   <img src={walkSpriteSheetUrl} alt="Walk sprite sheet" />
@@ -1224,6 +1395,22 @@ export default function Home() {
                 style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
               >
                 {regeneratingSpriteSheet === "attack" ? "Regenerating..." : "Regen Attack"}
+              </button>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle (4 frames)</h4>
+              {idleSpriteSheetUrl && (
+                <div className="image-preview" style={{ margin: 0, opacity: regeneratingSpriteSheet === "idle" ? 0.5 : 1 }}>
+                  <img src={idleSpriteSheetUrl} alt="Idle sprite sheet" />
+                </div>
+              )}
+              <button
+                className="btn btn-secondary"
+                onClick={() => regenerateSpriteSheet("idle")}
+                disabled={isGeneratingSpriteSheet || regeneratingSpriteSheet !== null || isRemovingBg}
+                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem", marginTop: "0.5rem", width: "100%" }}
+              >
+                {regeneratingSpriteSheet === "idle" ? "Regenerating..." : "Regen Idle"}
               </button>
             </div>
           </div>
@@ -1303,6 +1490,14 @@ export default function Home() {
                 </div>
               )}
             </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle</h4>
+              {idleBgRemovedUrl && (
+                <div className="image-preview" style={{ margin: 0 }}>
+                  <img src={idleBgRemovedUrl} alt="Idle sprite sheet with background removed" />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="button-group">
@@ -1347,6 +1542,12 @@ export default function Home() {
               onClick={() => setActiveSheet("attack")}
             >
               Attack
+            </button>
+            <button
+              className={`btn ${activeSheet === "idle" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setActiveSheet("idle")}
+            >
+              Idle
             </button>
           </div>
 
@@ -1578,6 +1779,82 @@ export default function Home() {
             </>
           )}
 
+          {/* Idle frame extraction */}
+          {activeSheet === "idle" && (
+            <>
+              <div className="frame-controls">
+                <label htmlFor="idleGridCols">Columns:</label>
+                <input
+                  id="idleGridCols"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={idleGridCols}
+                  onChange={(e) => setIdleGridCols(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
+                />
+                <label htmlFor="idleGridRows" style={{ marginLeft: "1rem" }}>Rows:</label>
+                <input
+                  id="idleGridRows"
+                  type="number"
+                  className="frame-count-input"
+                  min={1}
+                  max={8}
+                  value={idleGridRows}
+                  onChange={(e) => setIdleGridRows(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
+                />
+                <span style={{ marginLeft: "1rem", color: "var(--text-tertiary)", fontSize: "0.875rem" }}>
+                  ({idleGridCols * idleGridRows} frames)
+                </span>
+              </div>
+
+              {idleBgRemovedUrl && (
+                <div className="frame-extractor">
+                  <div className="sprite-sheet-container">
+                    <img
+                      ref={idleSpriteSheetRef}
+                      src={idleBgRemovedUrl}
+                      alt="Idle sprite sheet"
+                      onLoad={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        setIdleSpriteSheetDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                      }}
+                    />
+                    <div className="divider-overlay">
+                      {idleVerticalDividers.map((pos, index) => (
+                        <div
+                          key={`iv-${index}`}
+                          className="divider-line divider-vertical"
+                          style={{ left: `${pos}%` }}
+                          onMouseDown={(e) => handleIdleVerticalDividerDrag(index, e)}
+                        />
+                      ))}
+                      {idleHorizontalDividers.map((pos, index) => (
+                        <div
+                          key={`ih-${index}`}
+                          className="divider-line divider-horizontal"
+                          style={{ top: `${pos}%` }}
+                          onMouseDown={(e) => handleIdleHorizontalDividerDrag(index, e)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {idleExtractedFrames.length > 0 && (
+                <div className="frames-preview">
+                  {idleExtractedFrames.map((frame, index) => (
+                    <div key={index} className="frame-thumb">
+                      <img src={frame.dataUrl} alt={`Idle frame ${index + 1}`} />
+                      <div className="frame-label">Idle {index + 1}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           <div className="button-group">
             <button className="btn btn-secondary" onClick={() => setCurrentStep(3)}>
               ← Back
@@ -1585,7 +1862,7 @@ export default function Home() {
             <button
               className="btn btn-success"
               onClick={proceedToSandbox}
-              disabled={walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0 || attackExtractedFrames.length === 0}
+              disabled={walkExtractedFrames.length === 0 || jumpExtractedFrames.length === 0 || attackExtractedFrames.length === 0 || idleExtractedFrames.length === 0}
             >
               Try in Sandbox →
             </button>
@@ -1675,6 +1952,17 @@ export default function Home() {
                 ))}
               </div>
             </div>
+            <div>
+              <h4 style={{ marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "0.85rem" }}>Idle Frames</h4>
+              <div className="frames-preview" style={{ margin: 0, justifyContent: "flex-start" }}>
+                {idleExtractedFrames.map((frame, index) => (
+                  <div key={index} className="frame-thumb">
+                    <img src={frame.dataUrl} alt={`Idle ${index + 1}`} />
+                    <div className="frame-label">{index + 1}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="export-section">
@@ -1688,6 +1976,9 @@ export default function Home() {
               </button>
               <button className="btn btn-primary" onClick={exportAttackSpriteSheet}>
                 Attack Sheet
+              </button>
+              <button className="btn btn-primary" onClick={exportIdleSpriteSheet}>
+                Idle Sheet
               </button>
               <button className="btn btn-secondary" onClick={exportAllFrames}>
                 All Frames
@@ -1829,6 +2120,7 @@ export default function Home() {
                 walkFrames={walkExtractedFrames}
                 jumpFrames={jumpExtractedFrames}
                 attackFrames={attackExtractedFrames}
+                idleFrames={idleExtractedFrames}
                 fps={fps}
                 customBackgroundLayers={backgroundMode === "custom" ? customBackgroundLayers : undefined}
               />
@@ -1865,12 +2157,15 @@ export default function Home() {
               setWalkSpriteSheetUrl(null);
               setJumpSpriteSheetUrl(null);
               setAttackSpriteSheetUrl(null);
+              setIdleSpriteSheetUrl(null);
               setWalkBgRemovedUrl(null);
               setJumpBgRemovedUrl(null);
               setAttackBgRemovedUrl(null);
+              setIdleBgRemovedUrl(null);
               setWalkExtractedFrames([]);
               setJumpExtractedFrames([]);
               setAttackExtractedFrames([]);
+              setIdleExtractedFrames([]);
               setCharacterPrompt("");
               setInputImageUrl("");
               setCharacterInputMode("text");

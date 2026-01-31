@@ -6,23 +6,21 @@ fal.config({
   credentials: process.env.FAL_KEY,
 });
 
-const WALK_SPRITE_PROMPT = `Create a 6-frame pixel art walk cycle sprite sheet of this character.
+const WALK_SPRITE_PROMPT = `Create a 4-frame pixel art walk cycle sprite sheet of this character.
 
-Arrange the 6 frames in a 2x3 grid (2 rows, 3 columns) on white background. The character is walking to the right.
+Arrange the 4 frames in a 2x2 grid on white background. The character is walking to the right.
 
-Top row (frames 1-3):
-Frame 1: Right leg forward, left leg back - stride
-Frame 2: Legs very close together, passing/crossing
-Frame 3: Left leg forward, right leg back - opposite stride
+Top row (frames 1-2):
+Frame 1 (top-left): Right leg forward, left leg back - stride position
+Frame 2 (top-right): Legs close together, passing/crossing - transition
 
-Bottom row (frames 4-6):
-Frame 4: Legs close together, passing/crossing
-Frame 5: Right leg forward again - stride
-Frame 6: Legs very close together, passing/crossing
+Bottom row (frames 3-4):
+Frame 3 (bottom-left): Left leg forward, right leg back - opposite stride
+Frame 4 (bottom-right): Legs close together, passing/crossing - transition back
 
-Each frame shows a different phase of the walking motion. Stride frames have legs spread apart, passing frames have legs close together.
+Each frame shows a different phase of the walking motion. This creates a smooth looping walk cycle.
 
-Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames.`;
+Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right.`;
 
 const JUMP_SPRITE_PROMPT = `Create a 4-frame pixel art jump animation sprite sheet of this character.
 
@@ -52,18 +50,36 @@ Frame 4 (bottom-right): Recovery - returning to ready stance
 
 Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right. Make the attack visually dynamic and exciting.`;
 
-type SpriteType = "walk" | "jump" | "attack";
+const IDLE_SPRITE_PROMPT = `Create a 4-frame pixel art idle/breathing animation sprite sheet of this character.
+
+Arrange the 4 frames in a 2x2 grid on white background. The character is standing still but with subtle idle animation.
+
+Top row (frames 1-2):
+Frame 1 (top-left): Neutral standing pose - relaxed stance
+Frame 2 (top-right): Slight inhale - chest/body rises subtly, maybe slight arm movement
+
+Bottom row (frames 3-4):
+Frame 3 (bottom-left): Full breath - slight upward posture
+Frame 4 (bottom-right): Exhale - returning to neutral, slight settle
+
+Keep movements SUBTLE - this is a gentle breathing/idle loop, not dramatic motion. Character should look alive but relaxed.
+
+Use detailed 32-bit pixel art style with proper shading and highlights. Same character design in all frames. Character facing right.`;
+
+type SpriteType = "walk" | "jump" | "attack" | "idle";
 
 const PROMPTS: Record<SpriteType, string> = {
   walk: WALK_SPRITE_PROMPT,
   jump: JUMP_SPRITE_PROMPT,
   attack: ATTACK_SPRITE_PROMPT,
+  idle: IDLE_SPRITE_PROMPT,
 };
 
 const ASPECT_RATIOS: Record<SpriteType, string> = {
-  walk: "4:3",   // 2x3 grid
+  walk: "1:1",   // 2x2 grid
   jump: "1:1",   // 2x2 grid
   attack: "21:9", // 2x2 grid - ultra-wide for big spell effects
+  idle: "1:1",   // 2x2 grid
 };
 
 export async function POST(request: NextRequest) {

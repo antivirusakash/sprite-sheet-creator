@@ -26,6 +26,7 @@ interface PixiSandboxProps {
   walkFrames: Frame[];
   jumpFrames: Frame[];
   attackFrames: Frame[];
+  idleFrames: Frame[];
   fps: number;
   customBackgroundLayers?: CustomBackgroundLayers;
 }
@@ -46,7 +47,7 @@ const CUSTOM_PARALLAX_SPEEDS = [0, 0.3, 0.6];
 const JUMP_VELOCITY = -12;
 const GRAVITY = 0.6;
 
-export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps, customBackgroundLayers }: PixiSandboxProps) {
+export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, idleFrames, fps, customBackgroundLayers }: PixiSandboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const characterState = useRef({
@@ -60,19 +61,23 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
     walkFrameIndex: 0,
     jumpFrameIndex: 0,
     attackFrameIndex: 0,
+    idleFrameIndex: 0,
     frameTime: 0,
     jumpFrameTime: 0,
     attackFrameTime: 0,
+    idleFrameTime: 0,
   });
   const keysPressed = useRef<Set<string>>(new Set());
   const animationRef = useRef<number>(0);
   const walkImagesRef = useRef<HTMLImageElement[]>([]);
   const jumpImagesRef = useRef<HTMLImageElement[]>([]);
   const attackImagesRef = useRef<HTMLImageElement[]>([]);
+  const idleImagesRef = useRef<HTMLImageElement[]>([]);
   // Store frame metadata for bounding box info
   const walkFrameDataRef = useRef<Frame[]>([]);
   const jumpFrameDataRef = useRef<Frame[]>([]);
   const attackFrameDataRef = useRef<Frame[]>([]);
+  const idleFrameDataRef = useRef<Frame[]>([]);
   const bgLayersRef = useRef<HTMLImageElement[]>([]);
   const bgLoadedRef = useRef(false);
   // Custom background layers
@@ -230,6 +235,27 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
     }
   }, [attackFrames]);
 
+  // Load idle sprite frames
+  useEffect(() => {
+    const loadImages = async () => {
+      const images: HTMLImageElement[] = [];
+      for (const frame of idleFrames) {
+        const img = new Image();
+        img.src = frame.dataUrl;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+        images.push(img);
+      }
+      idleImagesRef.current = images;
+      idleFrameDataRef.current = idleFrames;
+    };
+    
+    if (idleFrames.length > 0) {
+      loadImages();
+    }
+  }, [idleFrames]);
+
   // Main game loop
   const gameLoop = useCallback(() => {
     const canvas = canvasRef.current;
@@ -247,6 +273,7 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
     const walkImages = walkImagesRef.current;
     const jumpImages = jumpImagesRef.current;
     const attackImages = attackImagesRef.current;
+    const idleImages = idleImagesRef.current;
     const bgLayers = bgLayersRef.current;
     // Accumulate time in seconds (not frames) for frame-rate independent effects
     timeRef.current += deltaTime;
@@ -378,6 +405,16 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
       state.frameTime = 0;
     }
 
+    // Idle animation - plays when standing still (not walking, jumping, or attacking)
+    if (!state.isWalking && !state.isJumping && !state.isAttacking && idleImages.length > 0) {
+      state.idleFrameTime += deltaTime;
+      const idleFrameDuration = 1 / (currentFps * 0.5); // Slower for subtle breathing
+      if (state.idleFrameTime >= idleFrameDuration) {
+        state.idleFrameTime -= idleFrameDuration;
+        state.idleFrameIndex = (state.idleFrameIndex + 1) % idleImages.length;
+      }
+    }
+
     // Jump animation - using delta time for frame-rate independence
     if (state.isJumping && jumpImages.length > 0 && !state.isAttacking) {
       state.jumpFrameTime += deltaTime;
@@ -407,13 +444,14 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
       }
     }
 
-    // Determine which sprite to draw (priority: attack > jump > walk/idle)
+    // Determine which sprite to draw (priority: attack > jump > walk > idle)
     let currentImg: HTMLImageElement | null = null;
     let currentFrameData: Frame | null = null;
     
     const walkFrameData = walkFrameDataRef.current;
     const jumpFrameData = jumpFrameDataRef.current;
     const attackFrameData = attackFrameDataRef.current;
+    const idleFrameData = idleFrameDataRef.current;
     
     if (state.isAttacking && attackImages.length > 0) {
       // Use attack frames (highest priority)
@@ -424,10 +462,18 @@ export default function PixiSandbox({ walkFrames, jumpFrames, attackFrames, fps,
       // Use jump frames
       currentImg = jumpImages[state.jumpFrameIndex];
       currentFrameData = jumpFrameData[state.jumpFrameIndex] || null;
-    } else if (walkImages.length > 0) {
-      // Use walk frames (idle = frame 0)
+    } else if (state.isWalking && walkImages.length > 0) {
+      // Use walk frames when walking
       currentImg = walkImages[state.walkFrameIndex];
       currentFrameData = walkFrameData[state.walkFrameIndex] || null;
+    } else if (idleImages.length > 0) {
+      // Use idle frames when standing still
+      currentImg = idleImages[state.idleFrameIndex];
+      currentFrameData = idleFrameData[state.idleFrameIndex] || null;
+    } else if (walkImages.length > 0) {
+      // Fallback to walk frame 0 if no idle frames
+      currentImg = walkImages[0];
+      currentFrameData = walkFrameData[0] || null;
     }
 
     // Draw character

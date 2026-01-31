@@ -17,7 +17,7 @@ AI-powered sprite sheet generator for 2D pixel art characters. Built with [fal.a
 ## Features
 
 - **Character Generation** - Generate pixel art characters from text prompts using nano-banana-pro
-- **Walk Cycle Sprites** - Automatically generate 6-frame walk cycle sprite sheets (2x3 grid)
+- **Walk Cycle Sprites** - Automatically generate 4-frame walk cycle sprite sheets (2x2 grid)
 - **Jump Animation** - Generate 4-frame jump animation sprite sheets (2x2 grid)
 - **Attack Animation** - Generate 4-frame attack animation sprite sheets (2x2 grid) - AI picks the attack style
 - **Background Removal** - Clean transparent backgrounds using Bria
