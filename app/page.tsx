@@ -1348,11 +1348,6 @@ export default function Home() {
       {/* Step 1: Generate Character / Game Assets */}
       {currentStep === 1 && (
         <div className="step-container">
-          <h2 className="step-title">
-            <span className="step-number">1</span>
-            {generationMode === "asset" ? "Generate Game Assets" : "Generate Character"}
-          </h2>
-
           <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
             <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
               <input
@@ -1372,39 +1367,6 @@ export default function Home() {
               />
               Game Assets
             </label>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1rem" }}>
-            <div
-              style={{
-                border: generationMode === "character" ? "2px solid var(--accent-color)" : "2px solid var(--border-color)",
-                borderRadius: "8px",
-                padding: "0.75rem",
-                background: "var(--bg-secondary)",
-                cursor: "pointer",
-              }}
-              onClick={() => setGenerationMode("character")}
-            >
-              <h3 style={{ margin: 0, fontSize: "1rem" }}>Generate Character</h3>
-              <p style={{ margin: "0.5rem 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Create a single character for sprite sheets and animations.
-              </p>
-            </div>
-            <div
-              style={{
-                border: generationMode === "asset" ? "2px solid var(--accent-color)" : "2px solid var(--border-color)",
-                borderRadius: "8px",
-                padding: "0.75rem",
-                background: "var(--bg-secondary)",
-                cursor: "pointer",
-              }}
-              onClick={() => setGenerationMode("asset")}
-            >
-              <h3 style={{ margin: 0, fontSize: "1rem" }}>Generate Game Assets</h3>
-              <p style={{ margin: "0.5rem 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Walls, buttons, pillars, cars, plants, homes, clouds, fishes, foods, and more.
-              </p>
-            </div>
           </div>
 
           {/* Input mode tabs */}
